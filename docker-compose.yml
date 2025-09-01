@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  mcpserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcpserver
+    ports:
+      - "8000:8000"  # Expose port to host
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    environment:
+      ENV: "production"
+#    user: "scanova:scanova"  # Matches scanova user created in Dockerfile

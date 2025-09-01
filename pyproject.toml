@@ -1,0 +1,13 @@
+[project]
+name = "scanova-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.12.4",
+    "requests>=2.32.4",
+    "fastapi>=0.116.1",
+    "uvicorn[standard]>=0.32.1",
+    "sentry-sdk[fastapi]>=1.40.0",
+]
