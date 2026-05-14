@@ -38,8 +38,8 @@ def extract_api_key(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if auth_header:
         # Handle "Bearer <token>" format
-        if auth_header.startswith("Bearer "):
-            return auth_header[7:]  # Remove "Bearer " prefix
+        # if auth_header.startswith("Bearer "):
+        #     return auth_header[7:]  # Remove "Bearer " prefix
         # Handle direct API key format
         return auth_header
     
@@ -108,7 +108,14 @@ async def health_check():
 @app.get("/.well-known/oauth-protected-resource")
 async def oauth_protected_resource():
     return {
-        "resource": 'https://blastomeric-tera-superstructural.ngrok-free.app',
+        "resource": MCP_RESOURCE_URL,
+        "authorization_servers": [OAUTH_SERVER_URL] if OAUTH_SERVER_URL else []
+    }
+
+@app.get("/.well-known/oauth-protected-resource/mcp")
+async def oauth_protected_resource_mcp():
+    return {
+        "resource": MCP_RESOURCE_URL,
         "authorization_servers": [OAUTH_SERVER_URL] if OAUTH_SERVER_URL else []
     }
 
@@ -136,7 +143,7 @@ async def mcp_endpoint(request: Request):
                     content={"error": "unauthorized", "message": "Valid Bearer token required"},
                     status_code=401,
                     headers={
-                        "WWW-Authenticate": f'Bearer realm="Scanova MCP", resource_metadata="{MCP_RESOURCE_URL}/.well-known/oauth-protected-resource/mcp"'
+                        "WWW-Authenticate": f'Bearer realm="Scanova MCP", resource_metadata="{MCP_RESOURCE_URL}/.well-known/oauth-protected-resource/mcp'
                     }
                 )
         
