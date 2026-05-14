@@ -348,8 +348,6 @@ async def root():
 
 @app.post("/")
 async def rootPost(request: Request):
-    body = await request.json()
-    print(f'\n\n\n\n{body}\n\n\n\n')
     return {
         "service": "Scanova MCP Server",
         "version": "1.0.0",
