@@ -3,11 +3,13 @@ import json
 import os
 import asyncio
 from qrcode import create_qr_code, list_qr_codes, update_qr_code, retrieve_qr_code, download_qr_code, activate_qr_code, deactivate_qr_code
+from config import OAUTH_SERVER_URL, MCP_RESOURCE_URL
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 import logging
+log = logging.getLogger('mcp')
 
 # Create FastAPI app for HTTP transport
 app = FastAPI(title="Scanova MCP Server", version="1.0.0")
@@ -36,8 +38,8 @@ def extract_api_key(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if auth_header:
         # Handle "Bearer <token>" format
-        if auth_header.startswith("Bearer "):
-            return auth_header[7:]  # Remove "Bearer " prefix
+        # if auth_header.startswith("Bearer "):
+        #     return auth_header[7:]  # Remove "Bearer " prefix
         # Handle direct API key format
         return auth_header
     
@@ -102,18 +104,51 @@ def deactivate_qr_code_tool(qrid: str = None):
 async def health_check():
     return {"status": "healthy", "service": "scanova-mcp"}
 
+# OAuth Discovery Endpoint
+@app.get("/.well-known/oauth-protected-resource")
+async def oauth_protected_resource():
+    return {
+        "resource": MCP_RESOURCE_URL,
+        "authorization_servers": [OAUTH_SERVER_URL] if OAUTH_SERVER_URL else []
+    }
+
+@app.get("/.well-known/oauth-protected-resource/mcp")
+async def oauth_protected_resource_mcp():
+    return {
+        "resource": MCP_RESOURCE_URL,
+        "authorization_servers": [OAUTH_SERVER_URL] if OAUTH_SERVER_URL else []
+    }
+
 # MCP JSON-RPC endpoint
 @app.post("/mcp")
 async def mcp_endpoint(request: Request):
     try:
+        # Get the JSON-RPC request body first to check the method
+        body = await request.json()
+        method = body.get("method")
+        
         # Extract API key from headers
         api_key = extract_api_key(request)
         
-        # Get the JSON-RPC request
-        body = await request.json()
+        # Define public methods that don't require authentication
+        public_methods = ["initialize", "tools/list"]
+        
+        # Check authentication for protected methods
+        if method not in public_methods:
+            # Token validation logic: ensure a token is present
+            # The token will be passed along as the Scanova API key for backend requests
+            if not api_key:
+                log.warning(f"Unauthorized access attempt to method: {method}")
+                return JSONResponse(
+                    content={"error": "unauthorized", "message": "Valid Bearer token required"},
+                    status_code=401,
+                    headers={
+                        "WWW-Authenticate": f'Bearer realm="Scanova MCP", resource_metadata="{MCP_RESOURCE_URL}/.well-known/oauth-protected-resource/mcp'
+                    }
+                )
         
         # Handle basic MCP protocol methods
-        if body.get("method") == "tools/list":
+        if method == "tools/list":
             # Return available tools
             tools = [
                 {
@@ -207,18 +242,7 @@ async def mcp_endpoint(request: Request):
                 "result": {"tools": tools}
             })
             
-        elif body.get("method") == "tools/call":
-            # Check if API key is provided
-            if not api_key:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": body.get("id"),
-                    "error": {
-                        "code": -32602,
-                        "message": "API key is required. Please configure your Scanova API key in your MCP client headers (Authorization, X-API-Key, or Scanova-API-Key)."
-                    }
-                })
-            
+        elif method == "tools/call":
             # Handle tool calls
             params = body.get("params", {})
             tool_name = params.get("name")
@@ -266,7 +290,7 @@ async def mcp_endpoint(request: Request):
                     }
                 })
         
-        elif body.get("method") == "initialize":
+        elif method == "initialize":
             # MCP initialization
             return JSONResponse({
                 "jsonrpc": "2.0",
@@ -290,7 +314,7 @@ async def mcp_endpoint(request: Request):
                 "id": body.get("id"),
                 "error": {
                     "code": -32601,
-                    "message": f"Method not found: {body.get('method')}"
+                    "message": f"Method not found: {method}"
                 }
             })
             
@@ -303,11 +327,27 @@ async def mcp_endpoint(request: Request):
                 "code": -32603,
                 "message": f"Internal error: {str(e)}"
             }
-        })
+        }, status_code=500)
 
 # Root endpoint
 @app.get("/")
 async def root():
+    return {
+        "service": "Scanova MCP Server",
+        "version": "1.0.0",
+        "endpoints": {
+            "mcp": "/mcp",
+            "health": "/health"
+        },
+        "authentication": {
+            "required": "Scanova API Key",
+            "headers": ["Authorization", "X-API-Key", "Scanova-API-Key"],
+            "note": "Configure your Scanova API key in your MCP client headers"
+        }
+    }
+
+@app.post("/")
+async def rootPost(request: Request):
     return {
         "service": "Scanova MCP Server",
         "version": "1.0.0",
