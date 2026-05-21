@@ -12,3 +12,5 @@ OAUTH_SERVER_URL = os.getenv("OAUTH_SERVER_URL", "https://qcg-api.scanova.io")
 
 # Resource URL for lazy authentication 401 header
 MCP_RESOURCE_URL = os.getenv("MCP_RESOURCE_URL", "https://mcp.scanova.io")
+
+OPENAI_APPS_CHALLENGE = os.getenv("OPENAI_APPS_CHALLENGE")
