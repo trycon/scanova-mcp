@@ -6,7 +6,7 @@ from qrcode import create_qr_code, list_qr_codes, update_qr_code, retrieve_qr_co
 from config import OAUTH_SERVER_URL, MCP_RESOURCE_URL, OPENAI_APPS_CHALLENGE
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 import uvicorn
 import logging
 log = logging.getLogger('mcp')
@@ -119,11 +119,9 @@ async def oauth_protected_resource_mcp():
         "authorization_servers": [OAUTH_SERVER_URL] if OAUTH_SERVER_URL else []
     }
 
-@app.get("/.well-known/openai-apps-challenge")
+@app.get("/.well-known/openai-apps-challenge", response_class=PlainTextResponse)
 async def openai_apps_challenge():
-    return {
-        "token": OPENAI_APPS_CHALLENGE if OPENAI_APPS_CHALLENGE else "No challenge token configured"
-    }
+    return OPENAI_APPS_CHALLENGE if OPENAI_APPS_CHALLENGE else "No challenge token configured"
 
 # MCP JSON-RPC endpoint
 @app.post("/mcp")
