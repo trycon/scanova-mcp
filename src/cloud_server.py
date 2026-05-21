@@ -3,7 +3,7 @@ import json
 import os
 import asyncio
 from qrcode import create_qr_code, list_qr_codes, update_qr_code, retrieve_qr_code, download_qr_code, activate_qr_code, deactivate_qr_code
-from config import OAUTH_SERVER_URL, MCP_RESOURCE_URL
+from config import OAUTH_SERVER_URL, MCP_RESOURCE_URL, OPENAI_APPS_CHALLENGE
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -119,6 +119,12 @@ async def oauth_protected_resource_mcp():
         "authorization_servers": [OAUTH_SERVER_URL] if OAUTH_SERVER_URL else []
     }
 
+@app.get("/.well-known/openai-apps-challenge")
+async def openai_apps_challenge():
+    return {
+        "token": OPENAI_APPS_CHALLENGE if OPENAI_APPS_CHALLENGE else "No challenge token configured"
+    }
+
 # MCP JSON-RPC endpoint
 @app.post("/mcp")
 async def mcp_endpoint(request: Request):
@@ -153,7 +159,9 @@ async def mcp_endpoint(request: Request):
             tools = [
                 {
                     "name": "create_qr_code",
+                    "title": "Create QR code",
                     "description": "Create a new QR code. Can be called with: create qr, make qr code, generate qr",
+                    "annotations": {"readOnlyHint": False},
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -167,7 +175,9 @@ async def mcp_endpoint(request: Request):
                 },
                 {
                     "name": "list_qr_codes", 
+                    "title": "List QR codes",
                     "description": "List QR codes. Can be called with: list qr codes, show qr codes",
+                    "annotations": {"readOnlyHint": True},
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -179,7 +189,9 @@ async def mcp_endpoint(request: Request):
                 },
                 {
                     "name": "update_qr_code",
+                    "title": "Update QR code",
                     "description": "Update an existing QR code",
+                    "annotations": {"readOnlyHint": False},
                     "inputSchema": {
                         "type": "object", 
                         "properties": {
@@ -191,7 +203,9 @@ async def mcp_endpoint(request: Request):
                 },
                 {
                     "name": "retrieve_qr_code",
+                    "title": "Retrieve QR code details",
                     "description": "Get details of a specific QR code",
+                    "annotations": {"readOnlyHint": True},
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -202,7 +216,9 @@ async def mcp_endpoint(request: Request):
                 },
                 {
                     "name": "download_qr_code", 
+                    "title": "Download QR code image",
                     "description": "Download QR code image",
+                    "annotations": {"readOnlyHint": True},
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -214,7 +230,9 @@ async def mcp_endpoint(request: Request):
                 },
                 {
                     "name": "activate_qr_code",
+                    "title": "Activate QR code",
                     "description": "Activate a QR code", 
+                    "annotations": {"readOnlyHint": False},
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -225,7 +243,9 @@ async def mcp_endpoint(request: Request):
                 },
                 {
                     "name": "deactivate_qr_code",
+                    "title": "Deactivate QR code",
                     "description": "Deactivate a QR code",
+                    "annotations": {"readOnlyHint": False},
                     "inputSchema": {
                         "type": "object", 
                         "properties": {
