@@ -1,4 +1,5 @@
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 import json
 import os
 import asyncio
@@ -58,43 +59,56 @@ def extract_api_key(request: Request) -> str:
 # Create MCP server
 server = FastMCP()
 
+READ_ONLY_TOOL_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True, openWorldHint=True, destructiveHint=False
+)
+WRITE_TOOL_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False, openWorldHint=True, destructiveHint=False
+)
+READ_ONLY_TOOL_ANNOTATIONS_JSON = {
+    "readOnlyHint": True, "openWorldHint": True, "destructiveHint": False
+}
+WRITE_TOOL_ANNOTATIONS_JSON = {
+    "readOnlyHint": False, "openWorldHint": True, "destructiveHint": False
+}
+
 @server.tool()
 def get_scanova_data(query: str) -> str:
     return "This is a test response"
 
-@server.tool("create_qr_code", description="Create a new QR code. Can be called with: create qr, make qr code, generate qr, new qr code, add qr code")
+@server.tool("create_qr_code", description="Create a new QR code. Can be called with: create qr, make qr code, generate qr, new qr code, add qr code", annotations=WRITE_TOOL_ANNOTATIONS)
 def create_qr_code_tool(params: dict = None):
     # This tool is mainly for FastMCP, the HTTP endpoint handles API key extraction
     log.error(f"create_qr_code_tool")
     return {"error": "Please use the HTTP MCP endpoint for API key authentication"}
 
-@server.tool("list_qr_codes", description="List QR codes. Can be called with: list qr codes, fetch qr list, get qr codes, show qr codes, display qr codes, last 5 qr codes, recent qr codes")
+@server.tool("list_qr_codes", description="List QR codes. Can be called with: list qr codes, fetch qr list, get qr codes, show qr codes, display qr codes, last 5 qr codes, recent qr codes", annotations=READ_ONLY_TOOL_ANNOTATIONS)
 def list_qr_codes_tool(page: int = 1, limit: int = 10, search: str = None):
     # This tool is mainly for FastMCP, the HTTP endpoint handles API key extraction
     log.info(f"list_qr_codes_tool")
     return {"error": "Please use the HTTP MCP endpoint for API key authentication"}
 
-@server.tool("update_qr_code", description="Update an existing QR code. Can be called with: update qr, modify qr code, edit qr code, change qr code")
+@server.tool("update_qr_code", description="Update an existing QR code. Can be called with: update qr, modify qr code, edit qr code, change qr code", annotations=WRITE_TOOL_ANNOTATIONS)
 def update_qr_code_tool(qrid: str = None, params: dict = None):
     # This tool is mainly for FastMCP, the HTTP endpoint handles API key extraction
     return {"error": "Please use the HTTP MCP endpoint for API key authentication"}
 
-@server.tool("retrieve_qr_code", description="Get details of a specific QR code. Can be called with: get qr details, fetch qr code, show qr info, qr code info")
+@server.tool("retrieve_qr_code", description="Get details of a specific QR code. Can be called with: get qr details, fetch qr code, show qr info, qr code info", annotations=READ_ONLY_TOOL_ANNOTATIONS)
 def retrieve_qr_code_tool(qrid: str = None):
     # This tool is mainly for FastMCP, the HTTP endpoint handles API key extraction
     return {"error": "Please use the HTTP MCP endpoint for API key authentication"}
 
-@server.tool("download_qr_code", description="Download QR code image. Can be called with: download qr, get qr image, save qr code, export qr code")
+@server.tool("download_qr_code", description="Download QR code image. Can be called with: download qr, get qr image, save qr code, export qr code", annotations=READ_ONLY_TOOL_ANNOTATIONS)
 def download_qr_code_tool(qrid: str = None):
     # This tool is mainly for FastMCP, the HTTP endpoint handles API key extraction
     return {"error": "Please use the HTTP MCP endpoint for API key authentication"}
 
-@server.tool("activate_qr_code", description="Activate a QR code. Can be called with: activate qr, enable qr code, turn on qr code, make qr active")
+@server.tool("activate_qr_code", description="Activate a QR code. Can be called with: activate qr, enable qr code, turn on qr code, make qr active", annotations=WRITE_TOOL_ANNOTATIONS)
 def activate_qr_code_tool(qrid: str = None):
     # This tool is mainly for FastMCP, the HTTP endpoint handles API key extraction
     return {"error": "Please use the HTTP MCP endpoint for API key authentication"}
 
-@server.tool("deactivate_qr_code", description="Deactivate a QR code. Can be called with: deactivate qr, disable qr code, turn off qr code, make qr inactive")
+@server.tool("deactivate_qr_code", description="Deactivate a QR code. Can be called with: deactivate qr, disable qr code, turn off qr code, make qr inactive", annotations=WRITE_TOOL_ANNOTATIONS)
 def deactivate_qr_code_tool(qrid: str = None):
     # This tool is mainly for FastMCP, the HTTP endpoint handles API key extraction
     return {"error": "Please use the HTTP MCP endpoint for API key authentication"}
@@ -159,7 +173,7 @@ async def mcp_endpoint(request: Request):
                     "name": "create_qr_code",
                     "title": "Create QR code",
                     "description": "Create a new QR code. Can be called with: create qr, make qr code, generate qr",
-                    "annotations": {"readOnlyHint": False},
+                    "annotations": WRITE_TOOL_ANNOTATIONS_JSON,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -175,7 +189,7 @@ async def mcp_endpoint(request: Request):
                     "name": "list_qr_codes", 
                     "title": "List QR codes",
                     "description": "List QR codes. Can be called with: list qr codes, show qr codes",
-                    "annotations": {"readOnlyHint": True},
+                    "annotations": READ_ONLY_TOOL_ANNOTATIONS_JSON,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -189,7 +203,7 @@ async def mcp_endpoint(request: Request):
                     "name": "update_qr_code",
                     "title": "Update QR code",
                     "description": "Update an existing QR code",
-                    "annotations": {"readOnlyHint": False},
+                    "annotations": WRITE_TOOL_ANNOTATIONS_JSON,
                     "inputSchema": {
                         "type": "object", 
                         "properties": {
@@ -203,7 +217,7 @@ async def mcp_endpoint(request: Request):
                     "name": "retrieve_qr_code",
                     "title": "Retrieve QR code details",
                     "description": "Get details of a specific QR code",
-                    "annotations": {"readOnlyHint": True},
+                    "annotations": READ_ONLY_TOOL_ANNOTATIONS_JSON,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -216,7 +230,7 @@ async def mcp_endpoint(request: Request):
                     "name": "download_qr_code", 
                     "title": "Download QR code image",
                     "description": "Download QR code image",
-                    "annotations": {"readOnlyHint": True},
+                    "annotations": READ_ONLY_TOOL_ANNOTATIONS_JSON,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -230,7 +244,7 @@ async def mcp_endpoint(request: Request):
                     "name": "activate_qr_code",
                     "title": "Activate QR code",
                     "description": "Activate a QR code", 
-                    "annotations": {"readOnlyHint": False},
+                    "annotations": WRITE_TOOL_ANNOTATIONS_JSON,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -243,7 +257,7 @@ async def mcp_endpoint(request: Request):
                     "name": "deactivate_qr_code",
                     "title": "Deactivate QR code",
                     "description": "Deactivate a QR code",
-                    "annotations": {"readOnlyHint": False},
+                    "annotations": WRITE_TOOL_ANNOTATIONS_JSON,
                     "inputSchema": {
                         "type": "object", 
                         "properties": {
