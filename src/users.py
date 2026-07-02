@@ -71,11 +71,11 @@ def remove_user(user_id: str, api_key: str = None) -> dict:
 
 
 def list_user_roles(api_key: str = None) -> dict:
-    """GET /user/roles/ — list available user roles."""
+    """GET /multi-users/access-levels/ — list available user roles."""
     if not api_key:
         return _auth_error()
     try:
-        resp = requests.get(f"{_BASE}/user/roles/", headers=_headers(api_key))
+        resp = requests.get(f"{_BASE}/multi-users/access-levels/", headers=_headers(api_key))
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}

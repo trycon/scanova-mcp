@@ -1,6 +1,9 @@
+import base64
 import json
 import requests
 from config import SCANOVA_BASE_URL
+
+_BASE = SCANOVA_BASE_URL.rstrip("/")
 
 
 def get_url_from_user():
@@ -68,9 +71,12 @@ def create_qr_code(params=None, api_key=None):
         # For MCP server, we need params to be provided
         return {"error": "Parameters with 'info' field are required for QR code creation"}
     
+    # Auto-serialize info if caller passed a dict instead of a JSON string
+    if params and isinstance(params.get("info"), (dict, list)):
+        params = {**params, "info": json.dumps(params["info"])}
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
-        resp = requests.post(f"{SCANOVA_BASE_URL}/qrcode/", headers=headers, json=params)
+        resp = requests.post(f"{_BASE}/qrcode/", headers=headers, json=params)
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
@@ -119,7 +125,7 @@ def list_qr_codes(params=None, api_key=None):
 
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
-        resp = requests.get(f"{SCANOVA_BASE_URL}/qrcode/", headers=headers, params=params)
+        resp = requests.get(f"{_BASE}/qrcode/", headers=headers, params=params)
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
@@ -147,7 +153,7 @@ def update_qr_code(qrid=None, params=None, api_key=None):
     
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
-        resp = requests.put(f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers, json=params)
+        resp = requests.put(f"{_BASE}/qrcode/{qrid}/", headers=headers, json=params)
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
@@ -172,7 +178,7 @@ def retrieve_qr_code(qrid=None, params=None, api_key=None):
 
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
-        resp = requests.get(f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers, params=params)
+        resp = requests.get(f"{_BASE}/qrcode/{qrid}/", headers=headers, params=params)
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
@@ -195,13 +201,18 @@ def download_qr_code(qrid=None, params=None, api_key=None):
     if not qrid:
         return {"error": "QR code ID is required for download operation"}
 
-    headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"{api_key}"}
     try:
-        resp = requests.get(f"{SCANOVA_BASE_URL}/qrcode/{qrid}/download", headers=headers, params=params)
+        resp = requests.get(f"{_BASE}/qr/{qrid}/download/", headers=headers, params=params)
         if resp.status_code == 200:
-            return {"success": True, "message": "QR code download successful", "content_type": resp.headers.get('content-type')}
-        else:
-            return resp.json()
+            content_type = resp.headers.get("content-type", "image/png")
+            return {
+                "success": True,
+                "content_type": content_type,
+                "size_bytes": len(resp.content),
+                "data_base64": base64.b64encode(resp.content).decode("utf-8"),
+            }
+        return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
 
@@ -228,7 +239,7 @@ def activate_qr_code(qrid=None, params=None, api_key=None):
     
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
-        resp = requests.patch(f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers, json=params)
+        resp = requests.patch(f"{_BASE}/qrcode/{qrid}/", headers=headers, json=params)
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
@@ -256,7 +267,7 @@ def deactivate_qr_code(qrid=None, params=None, api_key=None):
 
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
-        resp = requests.patch(f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers, json=params)
+        resp = requests.patch(f"{_BASE}/qrcode/{qrid}/", headers=headers, json=params)
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
@@ -270,7 +281,7 @@ def delete_qr_code(qrid=None, api_key=None):
         return {"error": "QR code ID is required for delete operation"}
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
-        resp = requests.delete(f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers)
+        resp = requests.delete(f"{_BASE}/qrcode/{qrid}/", headers=headers)
         if resp.status_code == 204:
             return {"success": True, "message": "QR code deleted"}
         return resp.json()
@@ -285,7 +296,7 @@ def get_qr_categories(view_type="all", api_key=None):
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
         resp = requests.get(
-            f"{SCANOVA_BASE_URL}/qrcode/category/",
+            f"{_BASE}/qrcode/category/",
             headers=headers,
             params={"view_type": view_type},
         )
@@ -295,24 +306,24 @@ def get_qr_categories(view_type="all", api_key=None):
 
 
 def download_qr_printable(qrid=None, size=600, name=None, api_key=None):
-    """POST /qrcode/download/ — generate a print-optimised PDF QR code."""
+    """GET /qr/{qrid}/download/ with for_print=true — generate a print-optimised PDF QR code."""
     if not api_key:
         return {"error": "API key is required. Please configure your Scanova API key in your MCP client."}
     if not qrid:
         return {"error": "QR code ID is required for printable download"}
-    # Multipart form data — no JSON Content-Type
     headers = {"Authorization": f"{api_key}"}
-    data = {"qrid": qrid, "for_print": "true", "size": str(size)}
+    params = {"for_print": "true", "file": "pdf", "size": str(size)}
     if name:
-        data["name"] = name
+        params["name"] = name
     try:
-        resp = requests.post(f"{SCANOVA_BASE_URL}/qrcode/download/", headers=headers, data=data)
+        resp = requests.get(f"{_BASE}/qr/{qrid}/download/", headers=headers, params=params)
         if resp.status_code == 200:
+            content_type = resp.headers.get("content-type", "application/pdf")
             return {
                 "success": True,
-                "message": "Printable QR code generated successfully",
-                "content_type": resp.headers.get("content-type"),
-                "content_length": len(resp.content),
+                "content_type": content_type,
+                "size_bytes": len(resp.content),
+                "data_base64": base64.b64encode(resp.content).decode("utf-8"),
             }
         return resp.json()
     except requests.RequestException as e:
@@ -330,7 +341,7 @@ def attach_form_to_qr(qrid=None, form_id=None, api_key=None):
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
         resp = requests.patch(
-            f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers, json={"form": form_id}
+            f"{_BASE}/qrcode/{qrid}/", headers=headers, json={"form": form_id}
         )
         return resp.json()
     except requests.RequestException as e:
@@ -346,7 +357,7 @@ def detach_form_from_qr(qrid=None, api_key=None):
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
         resp = requests.patch(
-            f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers, json={"form": None}
+            f"{_BASE}/qrcode/{qrid}/", headers=headers, json={"form": None}
         )
         return resp.json()
     except requests.RequestException as e:
@@ -364,7 +375,7 @@ def attach_lead_list_to_qr(qrid=None, lead_list_id=None, api_key=None):
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
         resp = requests.patch(
-            f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers, json={"lead_list": lead_list_id}
+            f"{_BASE}/qrcode/{qrid}/", headers=headers, json={"lead_list": lead_list_id}
         )
         return resp.json()
     except requests.RequestException as e:
@@ -380,7 +391,7 @@ def detach_lead_list_from_qr(qrid=None, api_key=None):
     headers = {"Authorization": f"{api_key}", "Content-Type": "application/json"}
     try:
         resp = requests.patch(
-            f"{SCANOVA_BASE_URL}/qrcode/{qrid}/", headers=headers, json={"lead_list": None}
+            f"{_BASE}/qrcode/{qrid}/", headers=headers, json={"lead_list": None}
         )
         return resp.json()
     except requests.RequestException as e:

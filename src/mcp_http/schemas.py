@@ -20,8 +20,32 @@ CREATE_QR_PARAMS_SCHEMA = {
         "info": {
             "type": "string",
             "description": (
-                "JSON string of QR content for the chosen category. "
-                'URL example: {"type":"url","data":{"url":"https://example.com"}}'
+                "JSON string of QR content. The structure depends on the category.\n"
+                "\n"
+                "Simple object format (categories 1-7, 10, 11):\n"
+                '  Website URL (cat 1):   {"type":"url","data":{"url":"https://example.com"}}\n'
+                '  Text (cat 2):          {"type":"text","data":{"text":"Hello World"}}\n'
+                '  Email (cat 3):         {"type":"email","data":{"email":"a@b.com","subject":"Hi","body":"Hello"}}\n'
+                '  Phone (cat 4):         {"type":"phoneNumber","data":{"phone":"7011472701"}}\n'
+                '  SMS (cat 5):           {"type":"sms","data":{"phone":"7011472701","message":"Hello"}}\n'
+                '  WiFi (cat 6):          {"type":"wifi","data":{"ssid":"MyNet","password":"secret","authentication":"WPA"}}\n'
+                '                         authentication values: WPA | WEP | nopass\n'
+                '  vCard (cat 7):         {"type":"vcard","data":{"first_name":"John","last_name":"Doe","mobile":"7011472701","job_title":"Engineer"}}\n'
+                '  App Store (cat 10):    {"type":"appStore","data":[{"type":"playStore","url":"https://play.google.com/store/apps/details?id=com.example"},{"type":"appleStore","url":"https://apps.apple.com/app/id123456789"}]}\n'
+                '  Google Map (cat 11):   {"type":"map","data":{"provider":"google","latitude":28.6139,"longitude":77.2090,"placeId":"ChIJL_P_CXMEDTkRs_FGKBLBFBE","placeName":"New Delhi, India"}}\n'
+                "\n"
+                "Page-builder format — info must be a JSON ARRAY ([...]) for these categories:\n"
+                '  Custom Page (cat 9):   [{"type":"page_layout","data":{"backgroundColor":"#ffffff"}},{"type":"description_box","data":{"text":"Hello World"}},{"type":"button","data":{"text":"Visit","url":"https://example.com"}}]\n'
+                '  Document (cat 13):     [{"type":"page_layout","data":{"templateId":"default_1"}},{"type":"main_page","data":{"pageTitle":"My Documents","files":[{"url":"https://example.com/doc.pdf","name":"My Document","fileName":"doc","size":78482}],"allowFileDownload":true}}]\n'
+                '                         Note: files must be publicly accessible URLs (PDF, DOCX, etc.). File upload is not supported via MCP.\n'
+                '  Wedding (cat 14):      [{"type":"page_layout","data":{"templateName":"classic","backgroundColor":"#ffffff"}},{"type":"couple_name","data":{"first_name":"Alice","second_name":"Bob"}},{"type":"description_box","data":{"text":"Join us for our wedding"}}]\n'
+                '  Social Media (cat 15): [{"type":"page_layout","data":{"templateName":"linear","backgroundColor":"#ffffff"}},{"type":"social_media_profiles","data":{"profiles":[{"platform":"instagram","url":"https://instagram.com/handle"}]}}]\n'
+                '  Audio (cat 16):        [{"type":"page_layout","data":{"templateId":"default_1"}},{"type":"main_page","data":{"pageTitle":"My Playlist","files":[{"url":"https://example.com/audio.mp3","name":"Track Name","mime":"audio/mpeg"}]}}]\n'
+                '                         Note: files must be publicly accessible audio URLs (mp3, wav, aac, m4a). File upload is not supported via MCP.\n'
+                '  Product (cat 18):      [{"type":"page_layout","data":{"backgroundColor":"#ffffff"}},{"type":"description_box","data":{"text":"Product description"}},{"type":"button","data":{"text":"Buy Now","url":"https://example.com/buy"}}]\n'
+                '  Restaurant (cat 25):   [{"type":"page_layout","data":{"templateName":"default"}},{"type":"brand_info","data":{"name":"Cafe Crush","description":"Authentic North Indian cuisine"}},{"type":"footer_info","data":{"phone":"9876543210","address":"Sector 62, Noida"}}]\n'
+                "  For other categories, call query_docs with mode='filesystem' and "
+                "query='cat /api-reference/references/category-list.mdx' to look up the correct info schema."
             ),
         },
         "pattern_info": {
@@ -329,7 +353,13 @@ UPDATE_FORM_SCHEMA = {
 # Lead Lists
 # ---------------------------------------------------------------------------
 
-LEAD_LIST_ID_SCHEMA = {"type": "string", "description": "Lead list ID"}
+LEAD_LIST_ID_SCHEMA = {
+    "type": "string",
+    "description": (
+        "Lead list string identifier — use the lead_id field (e.g. 'L3f4cc7db5bda42ee') "
+        "returned by list_lead_lists. Do NOT use the numeric id field; the API only accepts the lead_id string."
+    ),
+}
 
 LIST_LEAD_LISTS_SCHEMA = {
     "type": "object",
@@ -629,11 +659,18 @@ LIST_QR_CODES_INPUT_SCHEMA = {
             "minimum": 1,
             "maximum": 100,
             "default": 10,
-            "description": "Number of QR codes per page",
+            "description": "Number of results per page",
         },
         "search": {
             "type": "string",
-            "description": "Optional search filter by QR code name",
+            "description": "Optional search filter by name",
+        },
+        "is_page": {
+            "type": "boolean",
+            "description": (
+                "Filter by content type: true = Pages only, false = QR Codes only. "
+                "Omit to list everything (QR codes and Pages combined)."
+            ),
         },
     },
 }

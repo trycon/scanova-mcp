@@ -1,8 +1,10 @@
 """MCP JSON-RPC handlers for tool-related methods."""
 
+import json
 import logging
 
 from mcp_http.dispatcher import execute_tool
+from mcp_http.normalizer import normalize
 from mcp_http.registry import list_mcp_tools
 
 log = logging.getLogger("mcp")
@@ -25,10 +27,16 @@ def tools_list_result(request_id):
 
 def tools_call_result(request_id, tool_name: str, arguments: dict, api_key: str):
     result = execute_tool(tool_name, arguments, api_key)
+    normalized = normalize(result, tool_name)
+    if isinstance(normalized, dict) and normalized.get("status_code") == 401:
+        normalized["error"] = (
+            "Your Scanova session has expired or the API key is invalid. "
+            "Please reconnect your Scanova API key in your MCP client settings."
+        )
     return {
         "jsonrpc": "2.0",
         "id": request_id,
-        "result": {"content": [{"type": "text", "text": str(result)}]},
+        "result": {"content": [{"type": "text", "text": json.dumps(normalized)}]},
     }
 
 

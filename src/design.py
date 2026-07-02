@@ -10,6 +10,8 @@ import requests
 
 from config import SCANOVA_BASE_URL
 
+_BASE = SCANOVA_BASE_URL.rstrip("/")
+
 # ---------------------------------------------------------------------------
 # Design option catalogs (sourced from docs MCP pattern-info.mdx)
 # ---------------------------------------------------------------------------
@@ -209,6 +211,51 @@ def build_pattern_info(
 # Apply design to an existing QR code
 # ---------------------------------------------------------------------------
 
+def extract_design_args(pi: dict) -> dict:
+    """
+    Reverse-map a parsed pattern_info dict back to build_pattern_info kwargs.
+    Used by set_qr_design to preserve existing design settings before applying partial updates.
+    """
+    args: dict = {}
+    di = pi.get("dataInfo", {})
+    if "pattern" in di:         args["pattern"] = di["pattern"]
+    if "startColor" in di:      args["start_color"] = di["startColor"]
+    if "endColor" in di:        args["end_color"] = di["endColor"]
+    if "gradientStyle" in di:   args["gradient_style"] = di["gradientStyle"]
+    if "dotScale" in di:        args["dot_scale"] = di["dotScale"]
+    if "logo" in di:            args["logo_url"] = di["logo"]
+    if "backGroundColor" in pi: args["background_color"] = pi["backGroundColor"]
+    if "errorCorrection" in pi: args["error_correction"] = pi["errorCorrection"]
+    if "padding" in pi:         args["padding"] = pi["padding"]
+    ei = pi.get("eyeInfo", {}).get("TL", {})
+    if "shape" in ei:           args["eye_shape"] = ei["shape"]
+    if "innerEyeColor" in ei:   args["eye_inner_color"] = ei["innerEyeColor"]
+    if "outerEyeColor" in ei:   args["eye_outer_color"] = ei["outerEyeColor"]
+    frame = pi.get("frame")
+    if frame:
+        if "id" in frame:              args["frame_id"] = frame["id"]
+        if "primaryColor" in frame:    args["frame_primary_color"] = frame["primaryColor"]
+        if "secondaryColor" in frame:  args["frame_secondary_color"] = frame["secondaryColor"]
+        if "textColor" in frame:       args["frame_text_color"] = frame["textColor"]
+        if "bgColor" in frame:         args["frame_bg_color"] = frame["bgColor"]
+        if "category" in frame:        args["frame_category"] = frame["category"]
+        tc = frame.get("textConfig")
+        if tc:
+            if "text" in tc:        args["frame_text"] = tc["text"]
+            if "placement" in tc:   args["frame_text_placement"] = tc["placement"]
+            if "fontFamily" in tc:  args["frame_text_font"] = tc["fontFamily"]
+    shape = pi.get("shape")
+    if shape:
+        if "id" in shape:        args["shape_id"] = shape["id"]
+        sc = shape.get("color", {})
+        if "stroke" in sc:       args["shape_stroke_color"] = sc["stroke"]
+        if "shapeBg" in sc:      args["shape_bg_color"] = sc["shapeBg"]
+        if "pattern" in sc:      args["shape_pattern_color"] = sc["pattern"]
+        if "strokeWidth" in shape: args["shape_stroke_width"] = shape["strokeWidth"]
+        if "margin" in shape:    args["shape_margin"] = shape["margin"]
+    return args
+
+
 def apply_design(qrid: str, pattern_info_json: str, api_key: str) -> dict:
     """PATCH /qrcode/{qrid}/ — update only the pattern_info field."""
     if not api_key:
@@ -218,7 +265,7 @@ def apply_design(qrid: str, pattern_info_json: str, api_key: str) -> dict:
     headers = {"Authorization": api_key, "Content-Type": "application/json"}
     try:
         resp = requests.patch(
-            f"{SCANOVA_BASE_URL}/qrcode/{qrid}/",
+            f"{_BASE}/qrcode/{qrid}/",
             headers=headers,
             json={"pattern_info": pattern_info_json},
         )

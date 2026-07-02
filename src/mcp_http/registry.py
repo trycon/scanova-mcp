@@ -108,7 +108,9 @@ def list_mcp_tools():
             "Set QR code design",
             (
                 "Apply a visual design to an existing QR code using human-friendly named parameters. "
-                "Internally builds the pattern_info JSON — users never need to write JSON. "
+                "Only the fields you specify are changed — all other design settings (eye shape, pattern, "
+                "colors, frame, etc.) are automatically preserved from the current design. "
+                "Internally fetches the existing design and merges your changes on top. "
                 "Call get_qr_design_options first to show users available patterns, eye shapes, and frames."
             ),
             WRITE_TOOL_ANNOTATIONS_JSON,
@@ -127,7 +129,11 @@ def list_mcp_tools():
         _tool(
             "list_qr_codes",
             "List QR codes",
-            "List QR codes. Can be called with: list qr codes, show qr codes",
+            (
+                "List QR codes and/or Pages in the account. By default returns all items (QR codes + Pages combined). "
+                "Use is_page=false to list only QR Codes, or is_page=true to list only Pages. "
+                "Use the count field from the response for accurate totals — do not infer counts from page size alone."
+            ),
             READ_ONLY_TOOL_ANNOTATIONS_JSON,
             LIST_QR_CODES_INPUT_SCHEMA,
         ),
@@ -281,7 +287,13 @@ def list_mcp_tools():
         _tool(
             "delete_folder",
             "Delete folder",
-            "Delete a folder, optionally moving its QR codes to uncategorized",
+            (
+                "Delete a folder. IMPORTANT: Before calling this tool, ask the user which action "
+                "to take for QR codes inside the folder: (1) move to Uncategorized "
+                "(move_to_uncategorized=true, delete_permanently=false) or (2) permanently delete "
+                "them along with the folder (delete_permanently=true, move_to_uncategorized=false). "
+                "Do not proceed without explicit user confirmation of the desired behavior."
+            ),
             DESTRUCTIVE_TOOL_ANNOTATIONS_JSON,
             DELETE_FOLDER_SCHEMA,
         ),

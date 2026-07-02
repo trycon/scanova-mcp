@@ -74,6 +74,12 @@ async def oauth_protected_resource_mcp():
         "authorization_servers": [OAUTH_SERVER_URL] if OAUTH_SERVER_URL else [],
     }
 
+@app.get("/mcp/.well-known/oauth-protected-resource")
+async def oauth_protected_resource_mcp_prefixed():
+    return {
+        "resource": MCP_RESOURCE_URL,
+        "authorization_servers": [OAUTH_SERVER_URL] if OAUTH_SERVER_URL else [],
+    }
 
 @app.get("/.well-known/openai-apps-challenge", response_class=PlainTextResponse)
 async def openai_apps_challenge():
