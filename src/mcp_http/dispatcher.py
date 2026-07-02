@@ -1,7 +1,9 @@
 """Route MCP tool calls to Scanova API functions."""
 
+import json
+
 import docs_client
-from design import DESIGN_OPTIONS, apply_design, build_pattern_info
+from design import DESIGN_OPTIONS, apply_design, build_pattern_info, extract_design_args
 from analytics import export_analytics, export_raw_scans, get_account_stats, get_qr_analytics
 from folders import (
     create_folder,
@@ -33,10 +35,27 @@ from users import add_user, get_user, list_user_roles, list_users, remove_user, 
 
 
 def _set_qr_design_handler(arguments: dict, api_key: str) -> dict:
-    """Build pattern_info from friendly params then PATCH the QR code."""
+    """
+    Build pattern_info from friendly params then PATCH the QR code.
+    Fetches the existing design first so only the specified fields are changed —
+    all other design settings (eye shape, pattern, colors, frame, etc.) are preserved.
+    """
     qrid = arguments.get("qrid")
     if not qrid:
         return {"error": "qrid is required"}
+
+    # Fetch existing QR to extract current design as base defaults
+    existing_design_args: dict = {}
+    existing_qr = retrieve_qr_code(qrid, api_key=api_key)
+    if isinstance(existing_qr, dict):
+        pi_str = existing_qr.get("pattern_info")
+        if pi_str:
+            try:
+                existing_design_args = extract_design_args(json.loads(pi_str))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    # Collect only the design args the caller explicitly provided
     design_keys = {
         "pattern", "start_color", "end_color", "gradient_style", "dot_scale",
         "background_color", "eye_shape", "eye_inner_color", "eye_outer_color",
@@ -46,8 +65,11 @@ def _set_qr_design_handler(arguments: dict, api_key: str) -> dict:
         "shape_id", "shape_stroke_color", "shape_bg_color", "shape_pattern_color",
         "shape_stroke_width", "shape_margin", "error_correction", "logo_url", "padding",
     }
-    design_args = {k: v for k, v in arguments.items() if k in design_keys and v is not None}
-    pattern_info = build_pattern_info(**design_args)
+    user_args = {k: v for k, v in arguments.items() if k in design_keys and v is not None}
+
+    # Merge: existing design as base, user overrides on top
+    merged_args = {**existing_design_args, **user_args}
+    pattern_info = build_pattern_info(**merged_args)
     return apply_design(qrid, pattern_info, api_key)
 
 
@@ -59,6 +81,8 @@ def _list_qr_params(arguments: dict) -> dict | None:
         qr_params["limit"] = arguments["limit"]
     if arguments.get("search"):
         qr_params["search"] = arguments["search"]
+    if arguments.get("is_page") is not None:
+        qr_params["is_page"] = arguments["is_page"]
     return qr_params or None
 
 

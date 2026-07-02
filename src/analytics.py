@@ -1,3 +1,4 @@
+import base64
 import requests
 from config import SCANOVA_BASE_URL
 
@@ -61,11 +62,12 @@ def export_analytics(filter_by: str, q: list, from_date: str, to_date: str,
     try:
         resp = requests.post(f"{_BASE}/analytics/qr/export/", headers=_headers(api_key), params=params, json=body)
         if resp.status_code == 200:
+            content_type = resp.headers.get("content-type", "application/octet-stream")
             return {
                 "success": True,
-                "message": "Analytics export successful",
-                "content_type": resp.headers.get("content-type"),
-                "content_length": len(resp.content),
+                "content_type": content_type,
+                "size_bytes": len(resp.content),
+                "data_base64": base64.b64encode(resp.content).decode("utf-8"),
             }
         return resp.json()
     except requests.RequestException as e:
@@ -89,11 +91,12 @@ def export_raw_scans(filter_by: str, q: list, from_date: str, to_date: str,
     try:
         resp = requests.post(f"{_BASE}/analytics/qr/raw/", headers=_headers(api_key), params=params, json=body)
         if resp.status_code == 200:
+            content_type = resp.headers.get("content-type", "application/octet-stream")
             return {
                 "success": True,
-                "message": "Raw scan export successful",
-                "content_type": resp.headers.get("content-type"),
-                "content_length": len(resp.content),
+                "content_type": content_type,
+                "size_bytes": len(resp.content),
+                "data_base64": base64.b64encode(resp.content).decode("utf-8"),
             }
         return resp.json()
     except requests.RequestException as e:
