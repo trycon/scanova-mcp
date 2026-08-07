@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>QR Codes</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
+    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px; --row-hover: #f4f6f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; --row-hover: #1e2229; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .toolbar input { flex: 1; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); font-weight: 600; }
+  tr:hover td { background: var(--row-hover); }
+  .badge { font-size: 11px; padding: 2px 6px; border-radius: 10px; }
+  .badge.active { background: rgba(30,130,76,0.15); color: var(--success); }
+  .badge.inactive { background: rgba(192,57,43,0.15); color: var(--danger); }
+  .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  button { padding: 6px 12px; border: none; border-radius: var(--radius); background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .status { margin-top: 8px; font-size: 12px; color: var(--muted); min-height: 16px; }
+  .error { color: var(--danger); }
+  .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <input type="text" id="search" placeholder="Search by name…" />
+  <button id="search-btn">Search</button>
+</div>
+<table>
+  <thead><tr><th>Name</th><th>ID</th><th>Status</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div class="pager">
+  <button id="prev">◀ Prev</button>
+  <span id="count" class="status"></span>
+  <button id="next">Next ▶</button>
+</div>
+<div class="status" id="status"></div>
+
+<script>
+/* Same dual-convention bridge shim as the other UI resources — see
+   docs/mcp-ui-architecture.md Part 9 (Bridge Contract). */
+const Bridge = (function () {
+  if (window.openai && typeof window.openai.callTool === "function") {
+    return { convention: "openai", getInitialData: () => window.openai.toolOutput || null, callTool: (name, args) => window.openai.callTool(name, args) };
+  }
+  const pending = new Map();
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.type === "tool-result" && pending.has(msg.requestId)) {
+      const { resolve, reject } = pending.get(msg.requestId);
+      pending.delete(msg.requestId);
+      if (msg.error) reject(msg.error); else resolve(msg.result);
+    }
+  });
+  return {
+    convention: "postMessage",
+    getInitialData: () => (window.__UI_INITIAL_DATA__ || null),
+    callTool: (name, args) =>
+      new Promise((resolve, reject) => {
+        const requestId = "req-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        pending.set(requestId, { resolve, reject });
+        window.parent.postMessage({ type: "tool-call", tool: name, args, requestId }, "*");
+      }),
+  };
+})();
+
+const rowsEl = document.getElementById("rows");
+const countEl = document.getElementById("count");
+const statusEl = document.getElementById("status");
+const prevBtn = document.getElementById("prev");
+const nextBtn = document.getElementById("next");
+
+let page = 1;
+const limit = 10;
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+// Binds directly to normalizer.py's existing pagination shape
+// ({count, next, previous}) — no second pagination contract invented.
+function render(envelope) {
+  if (envelope && envelope.ok === false) {
+    setStatus((envelope.error && envelope.error.message) || "Failed to load", "error");
+    return;
+  }
+  const results = (envelope.data && envelope.data.results) || [];
+  const pagination = envelope.pagination || {};
+  rowsEl.innerHTML = "";
+  if (!results.length) {
+    rowsEl.innerHTML = '<tr><td colspan="3" class="empty">No QR codes found</td></tr>';
+  }
+  for (const item of results) {
+    const tr = document.createElement("tr");
+    const active = item.is_active !== false;
+    tr.innerHTML =
+      "<td>" + (item.name || "—") + "</td>" +
+      "<td>" + (item.id || "") + "</td>" +
+      '<td><span class="badge ' + (active ? "active" : "inactive") + '">' + (active ? "Active" : "Inactive") + "</span></td>";
+    rowsEl.appendChild(tr);
+  }
+  countEl.textContent = pagination.count != null ? pagination.count + " total" : "";
+  prevBtn.disabled = !pagination.previous;
+  nextBtn.disabled = !pagination.next;
+  setStatus("");
+}
+
+function load() {
+  setStatus("Loading…");
+  const search = document.getElementById("search").value.trim();
+  Bridge.callTool("list_qr_codes", { page, limit, search: search || undefined })
+    .then(render)
+    .catch(() => setStatus("Could not reach the host", "error"));
+}
+
+document.getElementById("search-btn").addEventListener("click", () => { page = 1; load(); });
+prevBtn.addEventListener("click", () => { if (page > 1) { page--; load(); } });
+nextBtn.addEventListener("click", () => { page++; load(); });
+
+// Hydration: if the host already has a list_qr_codes result, use it for
+// first paint; otherwise fetch page 1 immediately.
+const initial = Bridge.getInitialData();
+if (initial) {
+  render(initial);
+} else {
+  load();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Download QR Code</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
+    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .preview { flex: 0 0 180px; text-align: center; }
+  .preview img { width: 160px; height: 160px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; object-fit: contain; }
+  .preview .placeholder {
+    width: 160px; height: 160px; border: 1px dashed var(--border); border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center; color: var(--muted); margin: 0 auto; font-size: 12px; padding: 8px;
+  }
+  .fields { flex: 1 1 240px; min-width: 220px; }
+  .row { margin-bottom: 12px; }
+  .row label { display: block; margin-bottom: 4px; color: var(--muted); }
+  .row select, .row input[type="number"] {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--fg);
+  }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, a.download-link {
+    padding: 8px 14px; border: none; border-radius: var(--radius); background: var(--accent);
+    color: #fff; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block;
+  }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .status { margin-top: 10px; font-size: 12px; color: var(--muted); min-height: 16px; }
+  .error { color: var(--danger); }
+  .success { color: var(--success); }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="preview">
+    <div id="preview-slot"><div class="placeholder">No preview yet</div></div>
+  </div>
+  <div class="fields">
+    <div class="row">
+      <label for="file">Format</label>
+      <select id="file">
+        <option value="png">PNG</option>
+        <option value="jpg">JPG</option>
+        <option value="svg">SVG</option>
+        <option value="pdf">PDF</option>
+        <option value="eps">EPS</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="size">Size (px)</label>
+      <input type="number" id="size" min="10" max="1000" value="300" />
+    </div>
+    <div class="actions">
+      <button id="fetch">Fetch download</button>
+      <button id="printable" class="secondary">Printable PDF</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div id="link-slot"></div>
+  </div>
+</div>
+
+<script>
+/* Same dual-convention bridge shim as the other UI resources — see
+   docs/mcp-ui-architecture.md Part 9 (Bridge Contract). */
+const Bridge = (function () {
+  if (window.openai && typeof window.openai.callTool === "function") {
+    return { convention: "openai", getInitialData: () => window.openai.toolOutput || null, callTool: (name, args) => window.openai.callTool(name, args) };
+  }
+  const pending = new Map();
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.type === "tool-result" && pending.has(msg.requestId)) {
+      const { resolve, reject } = pending.get(msg.requestId);
+      pending.delete(msg.requestId);
+      if (msg.error) reject(msg.error); else resolve(msg.result);
+    }
+  });
+  return {
+    convention: "postMessage",
+    getInitialData: () => (window.__UI_INITIAL_DATA__ || null),
+    callTool: (name, args) =>
+      new Promise((resolve, reject) => {
+        const requestId = "req-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        pending.set(requestId, { resolve, reject });
+        window.parent.postMessage({ type: "tool-call", tool: name, args, requestId }, "*");
+      }),
+  };
+})();
+
+const EXTENSIONS = { "image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg", "application/pdf": "pdf", "application/postscript": "eps" };
+
+const statusEl = document.getElementById("status");
+const previewSlot = document.getElementById("preview-slot");
+const linkSlot = document.getElementById("link-slot");
+const fetchBtn = document.getElementById("fetch");
+const printableBtn = document.getElementById("printable");
+
+let qrid = null;
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+// Tool execution errors (Part 9B category 1) surface via the same
+// {ok:false, status_code, error} envelope normalizer.py already produces.
+function handleEnvelope(envelope, onOk) {
+  if (envelope && envelope.ok === false) {
+    setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Request failed", "error");
+    return;
+  }
+  onOk(envelope.data || {});
+}
+
+function renderResult(data, requestedFormat) {
+  const contentType = data.content_type || "";
+  const base64 = data.data_base64;
+  if (!base64) {
+    previewSlot.innerHTML = '<div class="placeholder">No file returned</div>';
+    linkSlot.innerHTML = "";
+    return;
+  }
+  if (contentType.startsWith("image/") && contentType !== "image/svg+xml") {
+    previewSlot.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = "data:" + contentType + ";base64," + base64;
+    img.alt = "QR code";
+    previewSlot.appendChild(img);
+  } else {
+    previewSlot.innerHTML = '<div class="placeholder">Preview not shown for this format — use the download link</div>';
+  }
+  const ext = EXTENSIONS[contentType] || requestedFormat || "bin";
+  linkSlot.innerHTML = "";
+  const a = document.createElement("a");
+  a.className = "download-link";
+  a.href = "data:" + contentType + ";base64," + base64;
+  a.download = "qrcode." + ext;
+  a.textContent = "Save file (" + Math.round((data.size_bytes || 0) / 1024) + " KB)";
+  linkSlot.appendChild(a);
+  setStatus("Ready", "success");
+}
+
+fetchBtn.addEventListener("click", () => {
+  if (!qrid) { setStatus("No QR code loaded", "error"); return; }
+  const file = document.getElementById("file").value;
+  const size = parseInt(document.getElementById("size").value, 10) || 300;
+  fetchBtn.disabled = true;
+  setStatus("Fetching…");
+  Bridge.callTool("download_qr_code", { qrid, params: { file, size } })
+    .then((envelope) => handleEnvelope(envelope, (data) => renderResult(data, file)))
+    .catch(() => setStatus("Could not reach the host", "error"))
+    .finally(() => { fetchBtn.disabled = false; });
+});
+
+printableBtn.addEventListener("click", () => {
+  if (!qrid) { setStatus("No QR code loaded", "error"); return; }
+  const size = parseInt(document.getElementById("size").value, 10) || 600;
+  printableBtn.disabled = true;
+  setStatus("Generating printable PDF…");
+  Bridge.callTool("download_qr_printable", { qrid, size })
+    .then((envelope) => handleEnvelope(envelope, (data) => renderResult(data, "pdf")))
+    .catch(() => setStatus("Could not reach the host", "error"))
+    .finally(() => { printableBtn.disabled = false; });
+});
+
+// ---- Hydration: use the tool result the host already has (e.g. from
+// retrieve_qr_code/download_qr_code/download_qr_printable) for first paint. ----
+function hydrate(envelope) {
+  if (!envelope || envelope.ok === false) { setStatus("Load a QR code to begin"); return; }
+  const data = envelope.data || {};
+  qrid = data.id || data.qrid || null;
+  if (data.data_base64) {
+    renderResult(data, document.getElementById("file").value);
+  } else {
+    setStatus(qrid ? "" : "Load a QR code to begin");
+  }
+}
+
+const initial = Bridge.getInitialData();
+if (initial) {
+  hydrate(initial);
+} else if (Bridge.convention === "postMessage") {
+  window.parent.postMessage({ type: "ui-ready" }, "*");
+  window.addEventListener("message", function onInit(event) {
+    const msg = event.data;
+    if (msg && msg.type === "ui-init") {
+      window.removeEventListener("message", onInit);
+      hydrate(msg.data);
+    }
+  });
+}
+</script>
+</body>
+</html>

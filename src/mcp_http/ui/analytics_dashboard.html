@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Analytics</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
+    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .cards { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .card { flex: 1 1 110px; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+  .card .value { font-size: 22px; font-weight: 700; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 16px; }
+  legend { padding: 0 6px; color: var(--muted); font-size: 12px; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+  .row label { flex: 0 0 90px; color: var(--muted); font-size: 12px; }
+  .row input, .row select { flex: 1; min-width: 120px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  .checks { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+  button { padding: 7px 12px; border: none; border-radius: var(--radius); background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .status { margin-top: 8px; font-size: 12px; color: var(--muted); min-height: 16px; }
+  .error { color: var(--danger); }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  th { color: var(--muted); font-weight: 600; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .bar-label { flex: 0 0 120px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; background: var(--border); border-radius: 4px; height: 14px; overflow: hidden; }
+  .bar-fill { background: var(--accent); height: 100%; }
+  .bar-value { flex: 0 0 40px; font-size: 12px; color: var(--muted); text-align: right; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; background: var(--border); padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; }
+</style>
+</head>
+<body>
+
+<div class="cards" id="stat-cards"></div>
+
+<fieldset>
+  <legend>Query analytics</legend>
+  <div class="row">
+    <label for="filter_by">Filter by</label>
+    <select id="filter_by">
+      <option value="qrid">QR IDs</option>
+      <option value="tags">Tags</option>
+      <option value="folder">Folder</option>
+    </select>
+    <input type="text" id="q" placeholder="comma-separated values" />
+  </div>
+  <div class="row">
+    <label for="from_date">From</label>
+    <input type="text" id="from_date" placeholder="YYYY-MM-DD" />
+    <label for="to_date" style="flex:0 0 40px;">To</label>
+    <input type="text" id="to_date" placeholder="YYYY-MM-DD" />
+  </div>
+  <div class="row">
+    <label>Breakdowns</label>
+    <div class="checks" id="types-checks"></div>
+  </div>
+  <div class="row"><label><input type="checkbox" id="exclude_bot" /> Exclude bot scans</label></div>
+  <button id="run">Run query</button>
+  <div class="status" id="status"></div>
+</fieldset>
+
+<div id="results"></div>
+
+<script>
+/* Same dual-convention bridge shim as the other UI resources — see
+   docs/mcp-ui-architecture.md Part 9 (Bridge Contract). */
+const Bridge = (function () {
+  if (window.openai && typeof window.openai.callTool === "function") {
+    return { convention: "openai", callTool: (name, args) => window.openai.callTool(name, args) };
+  }
+  const pending = new Map();
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.type === "tool-result" && pending.has(msg.requestId)) {
+      const { resolve, reject } = pending.get(msg.requestId);
+      pending.delete(msg.requestId);
+      if (msg.error) reject(msg.error); else resolve(msg.result);
+    }
+  });
+  return {
+    convention: "postMessage",
+    callTool: (name, args) =>
+      new Promise((resolve, reject) => {
+        const requestId = "req-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        pending.set(requestId, { resolve, reject });
+        window.parent.postMessage({ type: "tool-call", tool: name, args, requestId }, "*");
+      }),
+  };
+})();
+
+const TYPES = ["count", "qr", "device", "os", "browser", "date", "handset", "geography", "geo_location", "age", "day_time"];
+const typesEl = document.getElementById("types-checks");
+for (const t of TYPES) {
+  const id = "type-" + t;
+  const wrap = document.createElement("label");
+  wrap.innerHTML = '<input type="checkbox" id="' + id + '" value="' + t + '" ' + (t === "device" || t === "date" ? "checked" : "") + " /> " + t;
+  typesEl.appendChild(wrap);
+}
+
+const statusEl = document.getElementById("status");
+const cardsEl = document.getElementById("stat-cards");
+const resultsEl = document.getElementById("results");
+const runBtn = document.getElementById("run");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+function handleEnvelope(envelope, onOk) {
+  if (envelope && envelope.ok === false) {
+    setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Request failed", "error");
+    return;
+  }
+  onOk(envelope.data || {});
+}
+
+function renderCards(stats) {
+  cardsEl.innerHTML = "";
+  const labels = { total_qr_codes: "QR codes", total_scans: "Scans", total_users: "Users", active_qr_codes: "Active QR codes" };
+  for (const [key, value] of Object.entries(stats || {})) {
+    if (typeof value !== "number" && typeof value !== "string") continue; // skip nested/unknown shapes defensively
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = '<div class="value">' + value + '</div><div class="label">' + (labels[key] || key) + "</div>";
+    cardsEl.appendChild(card);
+  }
+}
+
+function loadAccountStats() {
+  Bridge.callTool("get_account_stats", {})
+    .then((envelope) => handleEnvelope(envelope, renderCards))
+    .catch(() => { /* account stats are a nice-to-have on load; query form still works without them */ });
+}
+
+// Best-effort, defensive rendering: get_qr_analytics's per-row shape isn't
+// pinned by src/mcp_http/output_schemas.py beyond "data: array of objects" —
+// this picks the first numeric field as the bar value and the first
+// string field as the label, and always falls back to a raw JSON dump
+// (Part 9B: resource loading/tool errors get a real error state; this is
+// simply an unknown-but-successful shape, so a readable fallback beats a
+// broken chart).
+function pickLabelAndValue(row) {
+  let label = null, value = null;
+  for (const [k, v] of Object.entries(row)) {
+    if (label === null && typeof v === "string") label = v;
+    if (value === null && typeof v === "number") value = v;
+  }
+  return { label: label || "—", value: value };
+}
+
+function renderAnalytics(data) {
+  const rows = Array.isArray(data.data) ? data.data : [];
+  resultsEl.innerHTML = "";
+  if (!rows.length) {
+    resultsEl.innerHTML = '<div class="status">No data for this query</div>';
+    return;
+  }
+  const parsed = rows.map(pickLabelAndValue);
+  const hasNumeric = parsed.some((r) => r.value !== null);
+
+  if (hasNumeric) {
+    const max = Math.max(1, ...parsed.map((r) => r.value || 0));
+    const chart = document.createElement("div");
+    for (const r of parsed) {
+      const pct = Math.round(((r.value || 0) / max) * 100);
+      const barRow = document.createElement("div");
+      barRow.className = "bar-row";
+      barRow.innerHTML =
+        '<div class="bar-label" title="' + r.label + '">' + r.label + '</div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+        '<div class="bar-value">' + (r.value != null ? r.value : "") + "</div>";
+      chart.appendChild(barRow);
+    }
+    resultsEl.appendChild(chart);
+  } else {
+    // Shape didn't match the label/value heuristic — show the raw rows so
+    // the data is still usable rather than silently dropped.
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(rows, null, 2);
+    resultsEl.appendChild(pre);
+  }
+}
+
+runBtn.addEventListener("click", () => {
+  const filter_by = document.getElementById("filter_by").value;
+  const q = document.getElementById("q").value.split(",").map((s) => s.trim()).filter(Boolean);
+  const from_date = document.getElementById("from_date").value.trim();
+  const to_date = document.getElementById("to_date").value.trim();
+  const exclude_bot_scan = document.getElementById("exclude_bot").checked;
+  const types = TYPES.filter((t) => document.getElementById("type-" + t).checked);
+
+  if (!q.length || !from_date || !to_date || !types.length) {
+    setStatus("Filter value(s), date range, and at least one breakdown are required", "error");
+    return;
+  }
+
+  runBtn.disabled = true;
+  setStatus("Running query…");
+  Bridge.callTool("get_qr_analytics", { filter_by, q, types, from_date, to_date, exclude_bot_scan })
+    .then((envelope) => handleEnvelope(envelope, (data) => { renderAnalytics(data); setStatus(""); }))
+    .catch(() => setStatus("Could not reach the host", "error"))
+    .finally(() => { runBtn.disabled = false; });
+});
+
+loadAccountStats();
+</script>
+</body>
+</html>

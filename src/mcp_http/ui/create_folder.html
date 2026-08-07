@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Create Folder</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
+    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--fg); max-width: 360px;
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .row { margin-bottom: 12px; }
+  .row label { display: block; margin-bottom: 4px; color: var(--muted); }
+  .row input[type="text"], .row select {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--fg);
+  }
+  button {
+    padding: 8px 14px; border: none; border-radius: var(--radius); background: var(--accent);
+    color: #fff; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .status { margin-top: 10px; font-size: 12px; color: var(--muted); min-height: 16px; }
+  .error { color: var(--danger); }
+  .success { color: var(--success); }
+</style>
+</head>
+<body>
+
+<div class="row">
+  <label for="name">Folder name</label>
+  <input type="text" id="name" placeholder="e.g. Marketing Campaign" />
+</div>
+<div class="row">
+  <label for="folder_type">Type</label>
+  <select id="folder_type">
+    <option value="qr">QR codes</option>
+    <option value="page">Pages</option>
+  </select>
+</div>
+<button id="create">Create folder</button>
+<div class="status" id="status"></div>
+
+<script>
+/* Same dual-convention bridge shim as qr-design.html — see
+   docs/mcp-ui-architecture.md Part 9 (Bridge Contract). Kept duplicated
+   rather than shared, matching Phase 1-3's "self-contained, no build step"
+   scope; a shared runtime chunk is a Phase 4+ concern once a bundler exists. */
+const Bridge = (function () {
+  if (window.openai && typeof window.openai.callTool === "function") {
+    return { convention: "openai", callTool: (name, args) => window.openai.callTool(name, args) };
+  }
+  const pending = new Map();
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.type === "tool-result" && pending.has(msg.requestId)) {
+      const { resolve, reject } = pending.get(msg.requestId);
+      pending.delete(msg.requestId);
+      if (msg.error) reject(msg.error); else resolve(msg.result);
+    }
+  });
+  return {
+    convention: "postMessage",
+    callTool: (name, args) =>
+      new Promise((resolve, reject) => {
+        const requestId = "req-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        pending.set(requestId, { resolve, reject });
+        window.parent.postMessage({ type: "tool-call", tool: name, args, requestId }, "*");
+      }),
+  };
+})();
+
+const statusEl = document.getElementById("status");
+const createBtn = document.getElementById("create");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+createBtn.addEventListener("click", () => {
+  const name = document.getElementById("name").value.trim();
+  const folder_type = document.getElementById("folder_type").value;
+  if (!name) { setStatus("Folder name is required", "error"); return; }
+
+  createBtn.disabled = true;
+  setStatus("Creating…");
+  Bridge.callTool("create_folder", { name, folder_type })
+    .then((envelope) => {
+      // Tool execution errors (Part 9B category 1) — same {ok:false,...}
+      // envelope normalizer.py already produces, no new error shape here.
+      if (envelope && envelope.ok === false) {
+        setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Failed to create folder", "error");
+        return;
+      }
+      setStatus("Folder “" + name + "” created", "success");
+      document.getElementById("name").value = "";
+    })
+    .catch(() => setStatus("Could not reach the host to create the folder", "error"))
+    .finally(() => { createBtn.disabled = false; });
+});
+</script>
+</body>
+</html>

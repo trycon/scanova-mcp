@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from mcp.server.fastmcp import FastMCP
 
-from config import MCP_RESOURCE_URL, OAUTH_SERVER_URL, OPENAI_APPS_CHALLENGE
+from config import ALLOWED_ORIGINS, MCP_RESOURCE_URL, OAUTH_SERVER_URL, OPENAI_APPS_CHALLENGE
 from mcp_http.fastmcp_tools import register_fastmcp_tools
 from mcp_http.protocol import PUBLIC_METHODS, handle_tool_method
 
@@ -16,10 +16,12 @@ log = logging.getLogger("mcp")
 # Create FastAPI app for HTTP transport
 app = FastAPI(title="Scanova MCP Server", version="1.0.0")
 
-# Add CORS middleware for web access
+# Add CORS middleware for web access.
+# Defaults to "*" for backward compatibility; set ALLOWED_ORIGINS (see
+# config.py) to scope this down once UI-capable client origins are known.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly for production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Export Analytics</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
+    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); max-width: 380px; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+  .row label { flex: 0 0 90px; color: var(--muted); font-size: 12px; }
+  .row input, .row select { flex: 1; min-width: 100px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  button, a.download-link {
+    padding: 8px 14px; border: none; border-radius: var(--radius); background: var(--accent);
+    color: #fff; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .status { margin-top: 10px; font-size: 12px; color: var(--muted); min-height: 16px; }
+  .error { color: var(--danger); }
+  .success { color: var(--success); }
+</style>
+</head>
+<body>
+
+<div class="row">
+  <label for="filter_by">Filter by</label>
+  <select id="filter_by">
+    <option value="qrid">QR IDs</option>
+    <option value="tags">Tags</option>
+    <option value="folder">Folder</option>
+  </select>
+</div>
+<div class="row">
+  <label for="q">Value(s)</label>
+  <input type="text" id="q" placeholder="comma-separated" />
+</div>
+<div class="row">
+  <label for="from_date">From</label>
+  <input type="text" id="from_date" placeholder="YYYY-MM-DD" />
+  <label for="to_date" style="flex:0 0 30px;">To</label>
+  <input type="text" id="to_date" placeholder="YYYY-MM-DD" />
+</div>
+<div class="row"><label><input type="checkbox" id="exclude_bot" /> Exclude bot scans</label></div>
+
+<div class="row">
+  <label for="analytics_format">Report format</label>
+  <select id="analytics_format">
+    <option value="xlsx">XLSX</option>
+    <option value="xls">XLS</option>
+    <option value="pdf">PDF</option>
+  </select>
+</div>
+<div class="actions"><button id="export-analytics">Export analytics report</button></div>
+
+<div class="row" style="margin-top:16px;">
+  <label for="raw_format">Raw scan format</label>
+  <select id="raw_format">
+    <option value="csv">CSV</option>
+    <option value="xlsx">XLSX</option>
+    <option value="xls">XLS</option>
+  </select>
+</div>
+<div class="row">
+  <label for="scan_type">Scan type</label>
+  <select id="scan_type">
+    <option value="raw">Real scans only</option>
+    <option value="raw_bot">Include bot scans</option>
+  </select>
+</div>
+<div class="actions"><button id="export-raw">Export raw scans</button></div>
+
+<div class="status" id="status"></div>
+<div id="link-slot"></div>
+
+<script>
+const Bridge = (function () {
+  if (window.openai && typeof window.openai.callTool === "function") {
+    return { convention: "openai", callTool: (name, args) => window.openai.callTool(name, args) };
+  }
+  const pending = new Map();
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.type === "tool-result" && pending.has(msg.requestId)) {
+      const { resolve, reject } = pending.get(msg.requestId);
+      pending.delete(msg.requestId);
+      if (msg.error) reject(msg.error); else resolve(msg.result);
+    }
+  });
+  return {
+    convention: "postMessage",
+    callTool: (name, args) =>
+      new Promise((resolve, reject) => {
+        const requestId = "req-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        pending.set(requestId, { resolve, reject });
+        window.parent.postMessage({ type: "tool-call", tool: name, args, requestId }, "*");
+      }),
+  };
+})();
+
+const statusEl = document.getElementById("status");
+const linkSlot = document.getElementById("link-slot");
+const exportAnalyticsBtn = document.getElementById("export-analytics");
+const exportRawBtn = document.getElementById("export-raw");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+function commonArgs() {
+  const q = document.getElementById("q").value.split(",").map((s) => s.trim()).filter(Boolean);
+  return {
+    filter_by: document.getElementById("filter_by").value,
+    q,
+    from_date: document.getElementById("from_date").value.trim(),
+    to_date: document.getElementById("to_date").value.trim(),
+    exclude_bot_scan: document.getElementById("exclude_bot").checked,
+  };
+}
+
+function validCommonArgs(args) {
+  return args.q.length && args.from_date && args.to_date;
+}
+
+// NOTE: src/mcp_http/output_schemas.py's EXPORT_OUTPUT documents a
+// `download_url` field, but the actual runtime implementation in
+// src/analytics.py returns `data_base64`/`content_type`/`size_bytes` (the
+// same shape download_qr.html already consumes) — the two have drifted.
+// This handles both so the UI works against either the documented or the
+// actual shape; the underlying schema/implementation mismatch is a
+// separate, pre-existing issue worth fixing in analytics.py or
+// output_schemas.py independently of this UI work.
+function renderDownload(data) {
+  linkSlot.innerHTML = "";
+  if (data.download_url) {
+    const a = document.createElement("a");
+    a.className = "download-link";
+    a.href = data.download_url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = "Open report";
+    linkSlot.appendChild(a);
+    setStatus("Ready", "success");
+    return;
+  }
+  if (data.data_base64) {
+    const a = document.createElement("a");
+    a.className = "download-link";
+    a.href = "data:" + (data.content_type || "application/octet-stream") + ";base64," + data.data_base64;
+    a.download = "export." + (document.getElementById("analytics_format")?.value || "bin");
+    a.textContent = "Save file (" + Math.round((data.size_bytes || 0) / 1024) + " KB)";
+    linkSlot.appendChild(a);
+    setStatus("Ready", "success");
+    return;
+  }
+  setStatus("Export completed but no file reference was returned", "error");
+}
+
+function handleEnvelope(envelope, onOk) {
+  if (envelope && envelope.ok === false) {
+    setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Export failed", "error");
+    return;
+  }
+  onOk(envelope.data || {});
+}
+
+exportAnalyticsBtn.addEventListener("click", () => {
+  const args = { ...commonArgs(), file_format: document.getElementById("analytics_format").value };
+  if (!validCommonArgs(args)) { setStatus("Filter value(s) and date range are required", "error"); return; }
+  exportAnalyticsBtn.disabled = true;
+  setStatus("Generating report…");
+  Bridge.callTool("export_analytics", args)
+    .then((envelope) => handleEnvelope(envelope, renderDownload))
+    .catch(() => setStatus("Could not reach the host", "error"))
+    .finally(() => { exportAnalyticsBtn.disabled = false; });
+});
+
+exportRawBtn.addEventListener("click", () => {
+  const args = {
+    ...commonArgs(),
+    file_format: document.getElementById("raw_format").value,
+    scan_type: document.getElementById("scan_type").value,
+  };
+  if (!validCommonArgs(args)) { setStatus("Filter value(s) and date range are required", "error"); return; }
+  exportRawBtn.disabled = true;
+  setStatus("Generating export…");
+  Bridge.callTool("export_raw_scans", args)
+    .then((envelope) => handleEnvelope(envelope, renderDownload))
+    .catch(() => setStatus("Could not reach the host", "error"))
+    .finally(() => { exportRawBtn.disabled = false; });
+});
+</script>
+</body>
+</html>

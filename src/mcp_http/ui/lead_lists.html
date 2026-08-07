@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Lead Lists</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
+    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px; --row-hover: #f4f6f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; --row-hover: #1e2229; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); font-weight: 600; }
+  tr:hover td { background: var(--row-hover); }
+  td.actions { white-space: nowrap; }
+  input[type="text"] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  button { padding: 6px 10px; border: none; border-radius: var(--radius); background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-size: 12px; }
+  button.link { background: none; color: var(--accent); text-decoration: underline; padding: 0; font-weight: 500; }
+  button.danger { background: var(--danger); }
+  .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+  .status { margin-top: 8px; font-size: 12px; color: var(--muted); min-height: 16px; }
+  .error { color: var(--danger); }
+  .success { color: var(--success); }
+  .confirm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; }
+  .confirm-box { background: var(--bg); color: var(--fg); border-radius: var(--radius); padding: 16px; width: 240px; }
+  .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <label><input type="checkbox" id="active-only" /> Active only</label>
+  <button id="refresh">Refresh</button>
+</div>
+<table>
+  <thead><tr><th>Name</th><th>ID</th><th>Active</th><th class="actions">Actions</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div class="status" id="status"></div>
+<div id="modal-slot"></div>
+
+<script>
+const Bridge = (function () {
+  if (window.openai && typeof window.openai.callTool === "function") {
+    return { convention: "openai", callTool: (name, args) => window.openai.callTool(name, args) };
+  }
+  const pending = new Map();
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.type === "tool-result" && pending.has(msg.requestId)) {
+      const { resolve, reject } = pending.get(msg.requestId);
+      pending.delete(msg.requestId);
+      if (msg.error) reject(msg.error); else resolve(msg.result);
+    }
+  });
+  return {
+    convention: "postMessage",
+    callTool: (name, args) =>
+      new Promise((resolve, reject) => {
+        const requestId = "req-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        pending.set(requestId, { resolve, reject });
+        window.parent.postMessage({ type: "tool-call", tool: name, args, requestId }, "*");
+      }),
+  };
+})();
+
+const rowsEl = document.getElementById("rows");
+const statusEl = document.getElementById("status");
+const modalSlot = document.getElementById("modal-slot");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+function handleEnvelope(envelope, onOk) {
+  if (envelope && envelope.ok === false) {
+    setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Request failed", "error");
+    return;
+  }
+  onOk(envelope.data);
+}
+
+function renderRows(items) {
+  rowsEl.innerHTML = "";
+  if (!items || !items.length) {
+    rowsEl.innerHTML = '<tr><td colspan="4" class="empty">No lead lists found</td></tr>';
+    return;
+  }
+  for (const list of items) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td><input type="text" data-rename-for="' + list.id + '" value="' + (list.name || "").replace(/"/g, "&quot;") + '" /></td>' +
+      "<td>" + list.id + "</td>" +
+      '<td><input type="checkbox" data-active-for="' + list.id + '" ' + (list.is_active ? "checked" : "") + " /></td>" +
+      '<td class="actions"><button class="link" data-save="' + list.id + '">Save</button> <button class="danger" data-delete="' + list.id + '">Delete</button></td>';
+    rowsEl.appendChild(tr);
+  }
+}
+
+function load() {
+  setStatus("Loading…");
+  const activeOnly = document.getElementById("active-only").checked;
+  Bridge.callTool("list_lead_lists", { is_active: activeOnly ? true : undefined })
+    .then((envelope) => handleEnvelope(envelope, (data) => { renderRows(data.results || data); setStatus(""); }))
+    .catch(() => setStatus("Could not reach the host", "error"));
+}
+
+document.getElementById("refresh").addEventListener("click", load);
+document.getElementById("active-only").addEventListener("change", load);
+
+rowsEl.addEventListener("click", (event) => {
+  const saveId = event.target.dataset.save;
+  const deleteId = event.target.dataset.delete;
+  if (saveId) {
+    const nameInput = rowsEl.querySelector('[data-rename-for="' + saveId + '"]');
+    const activeInput = rowsEl.querySelector('[data-active-for="' + saveId + '"]');
+    setStatus("Saving…");
+    Bridge.callTool("update_lead_list", { lead_list_id: saveId, name: nameInput.value, is_active: activeInput.checked })
+      .then((envelope) => handleEnvelope(envelope, () => setStatus("Saved", "success")))
+      .catch(() => setStatus("Could not reach the host", "error"));
+  }
+  if (deleteId) {
+    modalSlot.innerHTML =
+      '<div class="confirm-backdrop"><div class="confirm-box"><p>Permanently delete this lead list?</p>' +
+      '<div class="confirm-actions"><button class="link" id="confirm-cancel">Cancel</button><button class="danger" id="confirm-ok">Delete</button></div></div></div>';
+    document.getElementById("confirm-cancel").addEventListener("click", () => { modalSlot.innerHTML = ""; });
+    document.getElementById("confirm-ok").addEventListener("click", () => {
+      modalSlot.innerHTML = "";
+      setStatus("Deleting…");
+      Bridge.callTool("delete_lead_list", { lead_list_id: deleteId })
+        .then((envelope) => handleEnvelope(envelope, () => { setStatus("Lead list deleted", "success"); load(); }))
+        .catch(() => setStatus("Could not reach the host", "error"));
+    });
+  }
+});
+
+load();
+</script>
+</body>
+</html>
