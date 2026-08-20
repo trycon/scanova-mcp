@@ -4,7 +4,7 @@ import os
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from mcp.server.fastmcp import FastMCP
 
 from config import ALLOWED_ORIGINS, MCP_RESOURCE_URL, OAUTH_SERVER_URL, OPENAI_APPS_CHALLENGE
@@ -109,6 +109,7 @@ async def mcp_endpoint(request: Request):
             )
 
         result = handle_tool_method(method, body, api_key)
+
         if result is None:
             # Notification methods must not return a response body
             return Response(status_code=202)
@@ -124,6 +125,32 @@ async def mcp_endpoint(request: Request):
             },
             status_code=500,
         )
+
+
+@app.get("/mcp")
+async def mcp_stream(request: Request):
+    """
+    Streamable HTTP transport's optional server-push stream. This server has
+    no session-scoped server-initiated messages to push (no elicitation or
+    sampling requests), so there's nothing to stream — but some MCP hosts
+    (e.g. claude.ai's connector proxy) treat a 405 here as the whole
+    connector being unreachable when relaying a widget-triggered tools/call,
+    even though tools/call over POST succeeds. Open and hold a minimal SSE
+    stream instead of 405ing so that check passes.
+    """
+    async def event_stream():
+        yield ": connected\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.delete("/mcp")
+async def mcp_session_end():
+    """Streamable HTTP transport's optional session-termination request.
+    This server is stateless (no Mcp-Session-Id), so there's nothing to
+    tear down server-side — just acknowledge so clients that always send
+    this on disconnect don't see an error."""
+    return Response(status_code=204)
 
 
 @app.get("/")

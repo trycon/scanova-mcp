@@ -24,7 +24,7 @@ def test_list_resources_includes_qr_design():
 def test_get_resource_by_uri_hit():
     resource = get_resource_by_uri("ui://scanova/qr-design.html")
     assert resource is not None
-    assert resource.mime_type == "text/html"
+    assert resource.mime_type == "text/html;profile=mcp-app"
     assert "set_qr_design" in resource.tools
 
 

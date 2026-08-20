@@ -161,17 +161,29 @@ SET_QR_DESIGN_OUTPUT = {
 
 CREATE_QR_CODE_OUTPUT = _QR_OBJECT
 
+# Matches normalizer.py's actual envelope for paginated list tools: the
+# full {ok, data: {count, results}, pagination, error, ...} shape emitted
+# as structuredContent — not just the inner "data" object.
 LIST_QR_CODES_OUTPUT = {
     "type": "object",
     "properties": {
+        "ok": {"type": "boolean"},
         "data": {
-            "type": "array",
-            "items": _QR_OBJECT,
-            "description": "Page of QR code objects",
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer"},
+                "results": {"type": "array", "items": _QR_OBJECT},
+            },
+            "description": "Page of QR code objects with the total count",
         },
-        "total": {"type": "integer", "description": "Total number of QR codes"},
-        "page": {"type": "integer"},
-        "limit": {"type": "integer"},
+        "pagination": {
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer"},
+                "next": {"type": ["integer", "null"]},
+                "previous": {"type": ["integer", "null"]},
+            },
+        },
         **_ERROR,
     },
 }

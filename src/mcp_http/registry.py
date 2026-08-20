@@ -6,6 +6,7 @@ from mcp_http.annotations import (
     WRITE_TOOL_ANNOTATIONS_JSON,
 )
 from mcp_http.output_schemas import TOOL_OUTPUT_SCHEMAS
+from mcp_http.ui_response import tool_descriptor_meta
 from mcp_http.schemas import (
     # Docs bridge + Design
     QUERY_DOCS_SCHEMA,
@@ -59,6 +60,9 @@ def _tool(name, title, description, annotations, input_schema):
     output_schema = TOOL_OUTPUT_SCHEMAS.get(name)
     if output_schema:
         descriptor["outputSchema"] = output_schema
+    meta = tool_descriptor_meta(name)
+    if meta:
+        descriptor["_meta"] = meta
     return descriptor
 
 

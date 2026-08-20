@@ -64,6 +64,21 @@ UI_ENABLED_TOOLS = frozenset({
 OPENAI_OUTPUT_TEMPLATE_META_KEY = "openai/outputTemplate"
 
 
+def _resource_meta(tool_name: str) -> dict | None:
+    """Shared {_meta} shape linking a tool to its UI resource, or None if
+    UI Elements are disabled, the tool isn't UI-enabled, or it has no
+    registered resource."""
+    if not UI_ELEMENTS_ENABLED or tool_name not in UI_ENABLED_TOOLS:
+        return None
+    resource = get_resource_for_tool(tool_name)
+    if resource is None:
+        return None
+    return {
+        OPENAI_OUTPUT_TEMPLATE_META_KEY: resource.uri,
+        "ui": {"resourceUri": resource.uri},
+    }
+
+
 def attach_ui_metadata(tool_name: str, envelope: dict) -> dict:
     """
     Given a tool name and its already-normalized envelope, return
@@ -73,15 +88,15 @@ def attach_ui_metadata(tool_name: str, envelope: dict) -> dict:
     Elements are globally disabled, the tool isn't UI-enabled, or no
     resource is registered for it.
     """
-    if not UI_ELEMENTS_ENABLED or tool_name not in UI_ENABLED_TOOLS:
-        return {"envelope": envelope, "meta": None}
+    return {"envelope": envelope, "meta": _resource_meta(tool_name)}
 
-    resource = get_resource_for_tool(tool_name)
-    if resource is None:
-        return {"envelope": envelope, "meta": None}
 
-    meta = {
-        OPENAI_OUTPUT_TEMPLATE_META_KEY: resource.uri,
-        "ui": {"resourceUri": resource.uri},
-    }
-    return {"envelope": envelope, "meta": meta}
+def tool_descriptor_meta(tool_name: str) -> dict | None:
+    """
+    The `_meta` block a tool's `tools/list` descriptor must carry so a host
+    (e.g. ChatGPT) can discover its associated UI resource up front — hosts
+    read this at listing time and only call resources/read for tools that
+    declare it here; declaring it solely on the tools/call result (as
+    attach_ui_metadata does) is not sufficient for discovery.
+    """
+    return _resource_meta(tool_name)

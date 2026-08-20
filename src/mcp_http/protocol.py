@@ -42,7 +42,14 @@ def tools_call_result(request_id, tool_name: str, arguments: dict, api_key: str)
         )
 
     built = attach_ui_metadata(tool_name, normalized)
-    mcp_result = {"content": [{"type": "text", "text": json.dumps(built["envelope"])}]}
+    mcp_result = {
+        "content": [{"type": "text", "text": json.dumps(built["envelope"])}],
+        # window.openai.toolOutput (and callTool's resolved value) are hydrated
+        # from structuredContent, not content[0].text — required for any UI
+        # widget to receive data. Harmless for non-UI tools/clients that only
+        # read content.
+        "structuredContent": built["envelope"],
+    }
     if built["meta"] is not None:
         mcp_result["_meta"] = built["meta"]
 
@@ -59,7 +66,7 @@ def resources_list_result(request_id):
         "id": request_id,
         "result": {
             "resources": [
-                {"uri": r.uri, "name": r.file_path, "mimeType": r.mime_type}
+                {"uri": r.uri, "name": r.file_path, "mimeType": r.mime_type, "_meta": r.meta}
                 for r in list_resources()
             ]
         },
@@ -80,7 +87,12 @@ def resources_read_result(request_id, uri: str):
         "id": request_id,
         "result": {
             "contents": [
-                {"uri": resource.uri, "mimeType": resource.mime_type, "text": contents}
+                {
+                    "uri": resource.uri,
+                    "mimeType": resource.mime_type,
+                    "text": contents,
+                    "_meta": resource.meta,
+                }
             ]
         },
     }
