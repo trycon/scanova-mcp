@@ -616,13 +616,6 @@ All v1 mandatory/recommended items are preserved below, integrated with new cove
 - *Actor:* a compromised npm dependency in the Phase 4 build chain. *Mitigation:* lockfiles + CI-built, reproducible bundles (new items above).
 - *Actor:* a client that mishandles the additive `_meta` block and executes it unsafely. *Mitigation:* outside this server's control by spec design — conformant clients must treat `_meta` as inert data; this server's obligation is only to not put anything sensitive in it.
 
-**Security checklist (pre-launch, Phase 1):**
-- [ ] Sandbox attributes reviewed on the actual served iframe (not just documented intent)
-- [ ] CSP header present and tested for the one Phase-1 resource
-- [ ] No API key/token string present anywhere in the built HTML/JS (grep the built artifact in CI)
-- [ ] `logo_url` validated/proxied
-- [ ] `frame-ancestors` restricted to the confirmed target client's embedding host
-
 ---
 
 ## Part 16 — Documentation Strategy
