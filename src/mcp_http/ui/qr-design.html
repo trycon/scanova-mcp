@@ -6,273 +6,71 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
 <title>QR Design</title>
 <style>
-  :root {
-    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
-    --accent: #2d6cdf; --danger: #c0392b; --radius: 8px;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
-    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  }
-  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
-  .preview { flex: 0 0 200px; text-align: center; }
-  .preview img { width: 180px; height: 180px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
-  .preview .placeholder {
-    width: 180px; height: 180px; border: 1px dashed var(--border); border-radius: var(--radius);
-    display: flex; align-items: center; justify-content: center; color: var(--muted); margin: 0 auto;
-  }
-  .fields { flex: 1 1 320px; min-width: 260px; }
-  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-  .row label { flex: 0 0 120px; color: var(--muted); }
-  .row input[type="color"] { width: 36px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: none; }
-  .row select { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
-  button {
-    padding: 8px 14px; border: none; border-radius: var(--radius); background: var(--accent);
-    color: #fff; font-weight: 600; cursor: pointer;
-  }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .status { margin-top: 10px; font-size: 12px; color: var(--muted); min-height: 16px; }
-  .error { color: var(--danger); }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 140px; }
+  img { max-width: 100%; height: auto; border-radius: var(--radius); }
+  .placeholder { color: var(--muted); font-size: 13px; text-align: center; }
 </style>
 </head>
 <body>
 
-<div class="layout">
-  <div class="preview">
-    <div id="preview-slot"><div class="placeholder">Loading preview…</div></div>
-  </div>
-  <div class="fields">
-    <div class="row">
-      <label for="pattern">Pattern</label>
-      <select id="pattern"></select>
-    </div>
-    <div class="row">
-      <label for="eye_shape">Eye shape</label>
-      <select id="eye_shape"></select>
-    </div>
-    <div class="row">
-      <label for="start_color">Start color</label>
-      <input type="color" id="start_color" value="#000000" />
-      <label for="end_color" style="flex:0 0 70px;">End color</label>
-      <input type="color" id="end_color" value="#000000" />
-    </div>
-    <div class="row">
-      <label for="background_color">Background</label>
-      <input type="color" id="background_color" value="#ffffff" />
-      <label for="eye_inner_color" style="flex:0 0 70px;">Eye inner</label>
-      <input type="color" id="eye_inner_color" value="#000000" />
-    </div>
-    <div class="row">
-      <label for="error_correction">Error correction</label>
-      <select id="error_correction">
-        <option value="L">L — 7% (max capacity)</option>
-        <option value="M" selected>M — 15% (default)</option>
-        <option value="Q">Q — 25% (logo-safe)</option>
-        <option value="H">H — 30% (best for logos)</option>
-      </select>
-    </div>
-    <button id="apply">Apply design</button>
-    <div class="status" id="status"></div>
-  </div>
-</div>
+<div id="preview"><div class="placeholder">Loading…</div></div>
+<div class="status" id="status"></div>
 
 <script>
-/*
- * Bridge adapter — feature-detects the host's UI convention so this one
- * resource works for both the OpenAI Apps SDK (window.openai) and generic
- * MCP-UI-style hosts (postMessage). See docs/mcp-ui-architecture.md Part 9
- * (Bridge Contract) for the abstract contract this implements.
- *
- * NOTE: exact OpenAI global method names should be re-verified against the
- * live Apps SDK docs during Phase 1's real-client validation gate — this is
- * a best-effort mapping, not a guarantee of the current upstream API shape.
- */
-const Bridge = (function () {
-  if (window.openai && typeof window.openai.callTool === "function") {
-    return {
-      convention: "openai",
-      ready: Promise.resolve(),
-      getInitialData: () => window.openai.toolOutput || null,
-      // window.openai.callTool resolves to {content, structuredContent, _meta} —
-      // unwrap structuredContent so callers get the same envelope shape as the
-      // postMessage branch's callTool below (and as toolOutput already is).
-      callTool: (name, args) =>
-        window.openai.callTool(name, args).then((result) => (result && result.structuredContent) || null),
-      onToolResult: () => {},
-    };
-  }
-
-  // Standard MCP Apps postMessage bridge (spec 2026-01-26,
-  // https://apps.extensions.modelcontextprotocol.io). The host will not
-  // render or send anything to this iframe until it receives our
-  // ui/notifications/initialized notification, so that handshake must
-  // complete before anything else happens.
-  let nextId = 0;
-  const pending = new Map();
-  const toolResultHandlers = [];
-
-  function request(method, params) {
-    return new Promise((resolve, reject) => {
-      const id = ++nextId;
-      pending.set(id, { resolve, reject });
-      window.parent.postMessage({ jsonrpc: "2.0", id, method, params: params || {} }, "*");
-    });
-  }
-
-  function notify(method, params) {
-    window.parent.postMessage({ jsonrpc: "2.0", method, params: params || {} }, "*");
-  }
-
-  window.addEventListener("message", (event) => {
-    const msg = event.data;
-    if (!msg || typeof msg !== "object" || msg.jsonrpc !== "2.0") return;
-
-    if (msg.id !== undefined && pending.has(msg.id)) {
-      const { resolve, reject } = pending.get(msg.id);
-      pending.delete(msg.id);
-      if (msg.error) reject(msg.error); else resolve(msg.result);
-      return;
-    }
-
-    if (msg.method === "ui/notifications/tool-result") {
-      const data = (msg.params && msg.params.structuredContent) || null;
-      toolResultHandlers.forEach((cb) => cb(data));
-    }
-  });
-
-  const ready = request("ui/initialize", {
-    capabilities: {},
-    appInfo: { name: "scanova-mcp-ui", version: "1.0.0" },
-    protocolVersion: "2026-01-26",
-    appCapabilities: { experimental: {}, tools: { listChanged: false }, availableDisplayModes: ["inline"] },
-  }).then(() => {
-    notify("ui/notifications/initialized", {});
-  });
-
-  // Tell the host how big this widget actually is — without this, hosts
-  // fall back to a small default iframe size and the content has to be
-  // scrolled. Report once ready, then on every subsequent content resize.
-  function reportSize() {
-    notify("ui/notifications/size-changed", {
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight,
-    });
-  }
-  ready.then(reportSize);
-  if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(reportSize).observe(document.documentElement);
-  }
-
-  return {
-    convention: "postMessage",
-    ready,
-    getInitialData: () => null,
-    callTool: (name, args) =>
-      request("tools/call", { name, arguments: args }).then(
-        (result) => (result && result.structuredContent) || null
-      ),
-    onToolResult: (cb) => toolResultHandlers.push(cb),
-  };
-})();
-
-// ---- Design option catalogs (trimmed to the common/representative set;
-// mirrors src/design.py's DESIGN_OPTIONS, which get_qr_design_options exposes) ----
-const PATTERNS = ["Default", "Round", "RoundedCorners", "RotatedSquares", "diamond", "stars", "heart"];
-const EYE_SHAPES = ["Shape0", "Shape1", "Shape2", "Shape3", "Shape4", "Shape5"];
-
-function fillSelect(select, values) {
-  select.innerHTML = "";
-  for (const v of values) {
-    const opt = document.createElement("option");
-    opt.value = v; opt.textContent = v;
-    select.appendChild(opt);
-  }
-}
-fillSelect(document.getElementById("pattern"), PATTERNS);
-fillSelect(document.getElementById("eye_shape"), EYE_SHAPES);
-
+const Bridge = window.__scanovaBridge();
+const previewEl = document.getElementById("preview");
 const statusEl = document.getElementById("status");
-const previewSlot = document.getElementById("preview-slot");
-const applyBtn = document.getElementById("apply");
 
-let qrid = null;
-
-function setStatus(text, isError) {
+function setStatus(text, kind) {
   statusEl.textContent = text || "";
-  statusEl.classList.toggle("error", !!isError);
+  statusEl.className = "status" + (kind ? " " + kind : "");
 }
 
-function renderPreview(base64) {
+// Minimal by design, same pattern as download-qr.html: this widget only
+// ever displays the QR code's current appearance so the user can verify a
+// set_qr_design change took effect — no form, no controls. The chat
+// message already states what design was applied.
+function renderImage(base64) {
   if (!base64) {
-    previewSlot.innerHTML = '<div class="placeholder">No preview available</div>';
+    previewEl.innerHTML = '<div class="placeholder">No preview available</div>';
     return;
   }
-  previewSlot.innerHTML = "";
+  previewEl.innerHTML = "";
   const img = document.createElement("img");
   img.src = "data:image/png;base64," + base64;
-  img.alt = "QR code preview";
-  previewSlot.appendChild(img);
+  img.alt = "QR code";
+  previewEl.appendChild(img);
 }
 
-// Tool execution errors (Part 9B category 1) surface via the same
-// {ok:false, status_code, error} envelope normalizer.py already produces —
-// no new error shape invented here.
-function handleEnvelope(envelope, onOk) {
-  if (envelope && envelope.ok === false) {
-    setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Request failed", true);
+function loadPreview(qrid) {
+  if (!qrid) {
+    previewEl.innerHTML = '<div class="placeholder">No QR code to preview</div>';
     return;
   }
-  onOk(envelope);
+  Bridge.callTool("download_qr_code", { qrid, params: { file: "png" } })
+    .then((envelope) => {
+      if (envelope && envelope.ok === false) {
+        previewEl.innerHTML = '<div class="placeholder">' +
+          ((envelope.error && envelope.error.message) || "Failed to load preview") + '</div>';
+        return;
+      }
+      renderImage(envelope && envelope.data && envelope.data.data_base64);
+    })
+    .catch(() => previewEl.innerHTML = '<div class="placeholder">Could not load preview</div>');
 }
 
-function refreshPreview() {
-  if (!qrid) return;
-  Bridge.callTool("download_qr_code", { qrid, params: { format: "PNG" } })
-    .then((envelope) => handleEnvelope(envelope, (env) => renderPreview(env.data && env.data.data_base64)))
-    .catch(() => setStatus("Could not load preview", true));
-}
-
-function applyDesign() {
-  if (!qrid) { setStatus("No QR code loaded", true); return; }
-  applyBtn.disabled = true;
-  setStatus("Applying…");
-  Bridge.callTool("set_qr_design", {
-    qrid,
-    pattern: document.getElementById("pattern").value,
-    eye_shape: document.getElementById("eye_shape").value,
-    start_color: document.getElementById("start_color").value,
-    end_color: document.getElementById("end_color").value,
-    background_color: document.getElementById("background_color").value,
-    eye_inner_color: document.getElementById("eye_inner_color").value,
-    error_correction: document.getElementById("error_correction").value,
-  })
-    .then((envelope) => handleEnvelope(envelope, () => { setStatus("Design applied"); refreshPreview(); }))
-    .catch(() => setStatus("Could not apply design", true))
-    .finally(() => { applyBtn.disabled = false; });
-}
-
-applyBtn.addEventListener("click", applyDesign);
-
-// ---- Hydration: use the tool result the host already has, no extra
-// round trip required for first paint (Part 9 Bridge Contract). ----
 function hydrate(envelope) {
-  if (!envelope || envelope.ok === false) {
-    setStatus("No design data available", true);
+  if (!envelope) return;
+  if (envelope.ok === false) {
+    previewEl.innerHTML = '<div class="placeholder">' +
+      ((envelope.error && envelope.error.message) || "Failed to apply design") + '</div>';
     return;
   }
   const data = envelope.data || {};
-  qrid = data.qrid || null;
   setStatus("");
-  refreshPreview();
+  loadPreview(data.qrid || null);
 }
 
-// Hydration: wait for the bridge handshake, then use the host's initial
-// result if it already has one; a later ui/notifications/tool-result push
-// re-renders too. hydrate() already no-ops gracefully on null/undefined.
 Bridge.ready.then(() => {
   Bridge.onToolResult(hydrate);
   hydrate(Bridge.getInitialData());

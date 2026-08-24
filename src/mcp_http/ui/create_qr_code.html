@@ -6,189 +6,265 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
 <title>Create QR Code</title>
 <style>
-  :root {
-    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
-    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 16px; background: var(--bg); color: var(--fg); max-width: 380px;
-    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  }
+  body { max-width: 380px; }
   .row { margin-bottom: 12px; }
   .row label { display: block; margin-bottom: 4px; color: var(--muted); }
-  .row input[type="text"], .row select, .row textarea {
-    width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--bg); color: var(--fg); font: inherit;
-  }
-  textarea { resize: vertical; min-height: 50px; }
-  button {
-    padding: 8px 14px; border: none; border-radius: var(--radius); background: var(--accent);
-    color: #fff; font-weight: 600; cursor: pointer;
-  }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .status { margin-top: 10px; font-size: 12px; color: var(--muted); min-height: 16px; }
-  .error { color: var(--danger); }
-  .success { color: var(--success); }
+  .row input[type="text"], .row select, .row textarea { width: 100%; }
+  textarea { min-height: 50px; }
   .hint { font-size: 11px; color: var(--muted); margin-top: 12px; }
+  .success-note { font-size: 13px; color: var(--success); }
 </style>
 </head>
 <body>
 
-<div class="row">
-  <label for="qr_name">Name</label>
-  <input type="text" id="qr_name" placeholder="e.g. Storefront QR" />
-</div>
-<div class="row">
-  <label for="category">Content type</label>
-  <select id="category">
-    <option value="1" data-type="url">Website URL</option>
-    <option value="2" data-type="text">Plain text</option>
-    <option value="3" data-type="email">Email</option>
-    <option value="4" data-type="phoneNumber">Phone number</option>
-    <option value="5" data-type="sms">SMS</option>
-    <option value="6" data-type="wifi">WiFi</option>
-    <option value="7" data-type="vcard">vCard (contact)</option>
-  </select>
-</div>
-<div class="row">
-  <label for="qr_type">QR type</label>
-  <select id="qr_type">
-    <option value="dy">Dynamic (editable after creation)</option>
-    <option value="st">Static (fixed content)</option>
-  </select>
+<!--
+  Hidden by default. Some hosts render this widget for every create_qr_code
+  call regardless of whether that call's own _meta requested it (they key
+  off the tool-level association declared in tools/list) — so suppressing
+  the form on a successful create has to happen here, not just by omitting
+  _meta server-side (see ui_response.py:CONDITIONAL_UI_RULES, which is still
+  correct/kept for hosts that do respect per-call _meta).
+-->
+<div id="form-wrap" style="display:none">
+  <div class="row">
+    <label for="qr_name">Name</label>
+    <input type="text" id="qr_name" placeholder="e.g. Storefront QR" />
+  </div>
+  <div class="row">
+    <label for="category">Content type</label>
+    <select id="category">
+      <option value="1" data-type="url">Website URL</option>
+      <!-- Categories 2 and 3 were swapped here on 2026-08-24: live API
+           validation errors confirmed category 2 requires type "email" and
+           category 3 requires type "text" (the reverse of what this form
+           previously sent). -->
+      <option value="2" data-type="email">Email</option>
+      <option value="3" data-type="text">Plain text</option>
+      <option value="4" data-type="phoneNumber">Phone number</option>
+      <option value="5" data-type="sms">SMS</option>
+      <option value="6" data-type="wifi">WiFi</option>
+      <option value="7" data-type="vcard">vCard (contact)</option>
+      <option value="11" data-type="map">Google Map</option>
+      <option value="23" data-type="appDeepLink">App deep link</option>
+      <option value="10" data-type="appStore">App store</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="qr_type">QR type</label>
+    <select id="qr_type">
+      <option value="dy">Dynamic (editable after creation)</option>
+      <option value="st">Static (fixed content)</option>
+    </select>
+  </div>
+
+  <div id="fields"></div>
+
+  <button id="create">Create QR code</button>
+  <div class="status" id="status"></div>
+  <div class="hint">
+    Other content types (Image, Document, Wedding, Social Media, Audio, Product, Event, Custom Page,
+    Restaurant, Business Card, Coupon, etc.) aren't covered by this form — some of those need to be
+    created via app.scanova.io instead.
+  </div>
 </div>
 
-<div id="fields"></div>
-
-<button id="create">Create QR code</button>
-<div class="status" id="status"></div>
-<div class="hint">
-  Other content types (Google Map, App Store, Document, Social Media, etc.) aren't covered by this
-  form yet — ask in chat and the create_qr_code tool can still build those directly.
-</div>
+<div id="success-note" class="success-note" style="display:none"></div>
 
 <script>
-/* Same dual-convention bridge shim as qr-design.html/create_folder.html — see
-   docs/mcp-ui-architecture.md Part 9 (Bridge Contract). */
-const Bridge = (function () {
-  if (window.openai && typeof window.openai.callTool === "function") {
-    return {
-      convention: "openai",
-      ready: Promise.resolve(),
-      getInitialData: () => window.openai.toolOutput || null,
-      // window.openai.callTool resolves to {content, structuredContent, _meta} —
-      // unwrap structuredContent so callers get the same envelope shape as the
-      // postMessage branch's callTool below (and as toolOutput already is).
-      callTool: (name, args) =>
-        window.openai.callTool(name, args).then((result) => (result && result.structuredContent) || null),
-      onToolResult: () => {},
-    };
-  }
-
-  // Standard MCP Apps postMessage bridge (spec 2026-01-26,
-  // https://apps.extensions.modelcontextprotocol.io). The host will not
-  // render or send anything to this iframe until it receives our
-  // ui/notifications/initialized notification, so that handshake must
-  // complete before anything else happens.
-  let nextId = 0;
-  const pending = new Map();
-  const toolResultHandlers = [];
-
-  function request(method, params) {
-    return new Promise((resolve, reject) => {
-      const id = ++nextId;
-      pending.set(id, { resolve, reject });
-      window.parent.postMessage({ jsonrpc: "2.0", id, method, params: params || {} }, "*");
-    });
-  }
-
-  function notify(method, params) {
-    window.parent.postMessage({ jsonrpc: "2.0", method, params: params || {} }, "*");
-  }
-
-  window.addEventListener("message", (event) => {
-    const msg = event.data;
-    if (!msg || typeof msg !== "object" || msg.jsonrpc !== "2.0") return;
-
-    if (msg.id !== undefined && pending.has(msg.id)) {
-      const { resolve, reject } = pending.get(msg.id);
-      pending.delete(msg.id);
-      if (msg.error) reject(msg.error); else resolve(msg.result);
-      return;
-    }
-
-    if (msg.method === "ui/notifications/tool-result") {
-      const data = (msg.params && msg.params.structuredContent) || null;
-      toolResultHandlers.forEach((cb) => cb(data));
-    }
-  });
-
-  const ready = request("ui/initialize", {
-    capabilities: {},
-    appInfo: { name: "scanova-mcp-ui", version: "1.0.0" },
-    protocolVersion: "2026-01-26",
-    appCapabilities: { experimental: {}, tools: { listChanged: false }, availableDisplayModes: ["inline"] },
-  }).then(() => {
-    notify("ui/notifications/initialized", {});
-  });
-
-  // Tell the host how big this widget actually is — without this, hosts
-  // fall back to a small default iframe size and the content has to be
-  // scrolled. Report once ready, then on every subsequent content resize.
-  function reportSize() {
-    notify("ui/notifications/size-changed", {
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight,
-    });
-  }
-  ready.then(reportSize);
-  if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(reportSize).observe(document.documentElement);
-  }
-
-  return {
-    convention: "postMessage",
-    ready,
-    getInitialData: () => null,
-    callTool: (name, args) =>
-      request("tools/call", { name, arguments: args }).then(
-        (result) => (result && result.structuredContent) || null
-      ),
-    onToolResult: (cb) => toolResultHandlers.push(cb),
-  };
-})();
+const Bridge = window.__scanovaBridge();
 
 // Per-category field definitions + how each maps to the `info` payload shape
 // documented in src/mcp_http/schemas.py:CREATE_QR_PARAMS_SCHEMA.
 const CATEGORY_FIELDS = {
   url: [{ key: "url", label: "URL", type: "text", placeholder: "https://example.com" }],
   text: [{ key: "text", label: "Text", type: "textarea", placeholder: "Hello world" }],
+  // data keys confirmed via real API schema: to (required), subject, body,
+  // cc, bcc (all optional).
   email: [
-    { key: "email", label: "Email address", type: "text", placeholder: "a@b.com" },
+    { key: "to", label: "To", type: "text", placeholder: "a@b.com" },
+    { key: "cc", label: "CC", type: "text", placeholder: "a@b.com" },
+    { key: "bcc", label: "BCC", type: "text", placeholder: "a@b.com" },
     { key: "subject", label: "Subject", type: "text" },
     { key: "body", label: "Body", type: "textarea" },
   ],
-  phoneNumber: [{ key: "phone", label: "Phone number", type: "text", placeholder: "+1 555 0100" }],
+  // data key is number — confirmed via qcg-frontend's PhoneNumberDataModel
+  // (both "phone" and "contactNumber" were tried first and rejected by
+  // live validation errors).
+  phoneNumber: [{ key: "number", label: "Phone number", type: "text", placeholder: "+1 555 0100" }],
+  // data key is contactNumber, not phone — confirmed by a live
+  // "'contactNumber' is a required property" validation error.
   sms: [
-    { key: "phone", label: "Phone number", type: "text" },
+    { key: "contactNumber", label: "Phone number", type: "text" },
     { key: "message", label: "Message", type: "textarea" },
   ],
   wifi: [
     { key: "ssid", label: "Network name (SSID)", type: "text" },
     { key: "password", label: "Password", type: "text" },
-    { key: "authentication", label: "Security", type: "select", options: ["WPA", "WEP", "nopass"] },
+    { key: "authentication", label: "Security", type: "select", options: ["WPA", "WPA2", "WEP", "none"] },
   ],
+  // vCard's real info shape is an array of page-builder sections
+  // (profile_info + contact_details), not a flat vcard object — see
+  // INFO_BUILDERS.vcard below, which assembles that array from these
+  // flat fields. Confirmed via qcg-frontend's dynamic-v-card component.
   vcard: [
-    { key: "first_name", label: "First name", type: "text" },
-    { key: "last_name", label: "Last name", type: "text" },
-    { key: "mobile", label: "Mobile", type: "text" },
-    { key: "job_title", label: "Job title", type: "text" },
+    { key: "name", label: "Full name", type: "text" },
+    { key: "title", label: "Job title", type: "text" },
+    { key: "company", label: "Company", type: "text" },
+    { key: "email", label: "Email", type: "text" },
+    { key: "phone", label: "Phone", type: "text" },
+  ],
+  map: [
+    { key: "provider", label: "Map provider", type: "select", options: ["google"] },
+    { key: "latitude", label: "Latitude", type: "text", placeholder: "28.6139" },
+    { key: "longitude", label: "Longitude", type: "text", placeholder: "77.2090" },
+    { key: "placeName", label: "Place name", type: "text", placeholder: "New Delhi, India" },
+    { key: "placeId", label: "Place ID", type: "text" },
+  ],
+  // App Deep Link's real info shape is a JSON ARRAY of typed sections
+  // (intentUri/appStore/fallback), NOT wrapped in an outer {type,data}
+  // object — see INFO_BUILDERS.appDeepLink below. intentUri (at least one
+  // of android/iOS URI) and fallback URL are both required; appStore is
+  // always optional.
+  appDeepLink: [
+    { key: "androidUri", label: "Android deep link URI (required, or iOS below)", type: "text", placeholder: "myapp://open/screen/123" },
+    { key: "iosUri", label: "iOS deep link URI (required, or Android above)", type: "text", placeholder: "myapp://open/screen/123" },
+    { key: "playStoreUrl", label: "Play Store URL", type: "text", placeholder: "https://play.google.com/store/apps/details?id=com.example" },
+    { key: "appleStoreUrl", label: "Apple App Store URL", type: "text", placeholder: "https://apps.apple.com/app/id123456789" },
+    { key: "fallbackUrl", label: "Fallback URL (required)", type: "text", placeholder: "https://example.com/download" },
+  ],
+  appStore: [
+    { key: "playStoreUrl", label: "Play Store URL", type: "text", placeholder: "https://play.google.com/store/apps/details?id=com.example" },
+    { key: "appleStoreUrl", label: "Apple App Store URL", type: "text", placeholder: "https://apps.apple.com/app/id123456789" },
   ],
 };
+
+// Builds a list of {type, [field]: value} items from [type, value] pairs,
+// skipping any pair whose value is empty. Shared by every category whose
+// info shape includes a small fixed set of typed items (App Store's
+// play/apple store links, App Deep Link's android/iOS URIs and its own
+// nested App Store section).
+function typedItems(pairs, field) {
+  const items = [];
+  for (const [type, value] of pairs) {
+    if (value) items.push({ type, [field]: value });
+  }
+  return items;
+}
+
+// Categories whose entire `info` value doesn't fit the plain {type, data:
+// <flat object from CATEGORY_FIELDS>} shape (url/text/email/phoneNumber/
+// sms/wifi/map all use that default, handled directly in the submit
+// handler below) — each builds/flattens its own info shape instead.
+const INFO_BUILDERS = {
+  // data is a fixed 2-item array, not a flat object.
+  appStore: (values) => ({
+    type: "appStore",
+    data: typedItems(
+      [["playStore", values.playStoreUrl], ["appleStore", values.appleStoreUrl]],
+      "url"
+    ),
+  }),
+  // Real shape confirmed via qcg-frontend's dynamic-v-card component: an
+  // array of page-builder sections, not a flat "vcard" object.
+  vcard: (values) => {
+    const profileData = {};
+    if (values.name) profileData.name = values.name;
+    if (values.title) profileData.title = values.title;
+    if (values.company) profileData.company = values.company;
+    return [
+      { type: "profile_info", data: profileData },
+      { type: "contact_details", data: {
+          emails: values.email ? [{ email: values.email }] : [],
+          phoneNumbers: values.phone ? [{ phoneNumber: values.phone }] : [],
+      }},
+    ];
+  },
+  // Real shape confirmed by live-tested schema (2026-08-24): info itself
+  // IS the array of typed sections — there is no outer {type:"appDeepLink"}
+  // wrapper. intentUri (at least one of android/iOS) and fallback are both
+  // required; appStore is always optional. Sections with no values are
+  // omitted entirely.
+  appDeepLink: (values) => {
+    const sections = [];
+    const intentUriItems = typedItems(
+      [["android", values.androidUri], ["ios", values.iosUri]],
+      "uri"
+    );
+    if (intentUriItems.length) sections.push({ type: "intentUri", data: intentUriItems });
+
+    const appStoreItems = typedItems(
+      [["playStore", values.playStoreUrl], ["appleStore", values.appleStoreUrl]],
+      "url"
+    );
+    if (appStoreItems.length) sections.push({ type: "appStore", data: appStoreItems });
+
+    if (values.fallbackUrl) {
+      sections.push({ type: "fallback", data: { url: values.fallbackUrl } });
+    }
+    return sections;
+  },
+};
+
+// Inverse of INFO_BUILDERS — used to re-populate the flat form fields when
+// hydrating a failed create_qr_code call for one of these categories.
+const INFO_FLATTENERS = {
+  appStore: (info) => {
+    const out = {};
+    for (const item of (info && info.data) || []) {
+      if (item.type === "playStore") out.playStoreUrl = item.url;
+      if (item.type === "appleStore") out.appleStoreUrl = item.url;
+    }
+    return out;
+  },
+  vcard: (info) => {
+    const sections = Array.isArray(info) ? info : [];
+    const profile = (sections.find((s) => s && s.type === "profile_info") || {}).data || {};
+    const contact = (sections.find((s) => s && s.type === "contact_details") || {}).data || {};
+    return {
+      name: profile.name, title: profile.title, company: profile.company,
+      email: (contact.emails && contact.emails[0] && contact.emails[0].email) || "",
+      phone: (contact.phoneNumbers && contact.phoneNumbers[0] && contact.phoneNumbers[0].phoneNumber) || "",
+    };
+  },
+  appDeepLink: (info) => {
+    const out = {};
+    const sections = Array.isArray(info) ? info : [];
+    for (const section of sections) {
+      if (!section) continue;
+      if (section.type === "intentUri") {
+        for (const item of section.data || []) {
+          if (item.type === "android") out.androidUri = item.uri;
+          if (item.type === "ios") out.iosUri = item.uri;
+        }
+      } else if (section.type === "appStore") {
+        for (const item of section.data || []) {
+          if (item.type === "playStore") out.playStoreUrl = item.url;
+          if (item.type === "appleStore") out.appleStoreUrl = item.url;
+        }
+      } else if (section.type === "fallback") {
+        out.fallbackUrl = section.data && section.data.url;
+      }
+    }
+    return out;
+  },
+};
+
+// The Scanova API's validation error shape doesn't have a top-level
+// .message — instead it's typically {"<field>": ["error text", ...]}
+// (e.g. {"info": ["Validation failed for 'uri': '' is too short"]}).
+// Surface just the readable message(s), not the raw error object.
+function formatError(error) {
+  if (!error) return null;
+  if (typeof error === "string") return error;
+  if (error.message) return error.message;
+  for (const value of Object.values(error)) {
+    if (Array.isArray(value) && value.length && typeof value[0] === "string") {
+      return value.join(" ");
+    }
+    if (typeof value === "string") return value;
+  }
+  return JSON.stringify(error);
+}
 
 const fieldsEl = document.getElementById("fields");
 const categorySelect = document.getElementById("category");
@@ -241,6 +317,78 @@ function setStatus(text, kind) {
   statusEl.className = "status" + (kind ? " " + kind : "");
 }
 
+const formWrapEl = document.getElementById("form-wrap");
+const successNoteEl = document.getElementById("success-note");
+
+function showForm() {
+  formWrapEl.style.display = "block";
+  successNoteEl.style.display = "none";
+}
+
+function showSuccessNote(name) {
+  formWrapEl.style.display = "none";
+  successNoteEl.style.display = "block";
+  successNoteEl.textContent = "QR code “" + (name || "") + "” created.";
+}
+
+function prefillForm(prefill) {
+  if (!prefill) return;
+  if (prefill.name) document.getElementById("qr_name").value = prefill.name;
+  if (prefill.category != null) categorySelect.value = String(prefill.category);
+  if (prefill.qr_type) document.getElementById("qr_type").value = prefill.qr_type;
+  renderFields();
+}
+
+// The form is hidden by default (see the HTML comment above #form-wrap) and
+// only shown for the two cases that actually need user input: the widget
+// was opened directly via open_qr_code_creation_form (blank or pre-filled),
+// or a create_qr_code call failed (pre-filled with exactly what was
+// attempted, plus the error, so the user can fix and retry without
+// re-typing everything). A successful create_qr_code just gets a one-line
+// confirmation — the chat message already has the full details.
+function hydrate(envelope) {
+  if (!envelope) return;
+  if (envelope.ok === false) {
+    const attempted = (envelope.raw && envelope.raw.attempted_params) || {};
+    prefillForm(attempted);
+    // prefillForm() already selected the right category, so currentType()
+    // now reflects what was attempted — use that to pick the right
+    // unwrapping strategy for attempted.info.
+    const type = currentType();
+    if (attempted.info != null) {
+      // The plain categories (url/text/email/phoneNumber/sms/wifi/map) all
+      // use {type, data: <flat object>} — read data straight off. Anything
+      // else needs its own flattener.
+      const flat = INFO_FLATTENERS[type]
+        ? INFO_FLATTENERS[type](attempted.info)
+        : attempted.info.data || {};
+      for (const [key, value] of Object.entries(flat)) {
+        const input = fieldsEl.querySelector('[data-key="' + key + '"]');
+        if (input) input.value = value;
+      }
+    }
+    showForm();
+    setStatus(
+      formatError(envelope.error) || "Failed to create QR code — fix the fields below and try again",
+      "error"
+    );
+    return;
+  }
+  const data = envelope.data || {};
+  if (data.mode === "blank") {
+    showForm();
+    prefillForm(data.prefill);
+    return;
+  }
+  // A successful create_qr_code result — data is the created QR record.
+  showSuccessNote(data.name);
+}
+
+Bridge.ready.then(() => {
+  Bridge.onToolResult(hydrate);
+  hydrate(Bridge.getInitialData());
+});
+
 createBtn.addEventListener("click", () => {
   const name = document.getElementById("qr_name").value.trim();
   const category = categorySelect.value;
@@ -249,19 +397,24 @@ createBtn.addEventListener("click", () => {
 
   if (!name) { setStatus("Name is required", "error"); return; }
 
-  const data = {};
+  // Empty fields are left out of `values` entirely — the real API rejects
+  // some optional fields outright when sent as an empty string (e.g.
+  // App Deep Link's uri: "'' is too short") rather than treating them as
+  // "not provided".
+  const values = {};
   for (const input of fieldsEl.querySelectorAll("[data-key]")) {
-    data[input.dataset.key] = input.value;
+    if (input.value) values[input.dataset.key] = input.value;
   }
+  const info = INFO_BUILDERS[type] ? INFO_BUILDERS[type](values) : { type, data: values };
 
   createBtn.disabled = true;
   setStatus("Creating…");
   Bridge.callTool("create_qr_code", {
-    params: { name, category, qr_type, info: { type, data } },
+    params: { name, category, qr_type, info },
   })
     .then((envelope) => {
       if (envelope && envelope.ok === false) {
-        setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Failed to create QR code", "error");
+        setStatus(formatError(envelope.error) || "Failed to create QR code", "error");
         return;
       }
       setStatus("QR code “" + name + "” created", "success");

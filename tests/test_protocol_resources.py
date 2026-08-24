@@ -1,6 +1,7 @@
 import mcp_http.protocol as protocol
 import mcp_http.ui_response as ui_response
 from mcp.types import LATEST_PROTOCOL_VERSION
+from mcp_http.ui_resources import get_resource_for_tool
 
 
 def test_initialize_declares_latest_protocol_version_and_resources_capability():
@@ -12,7 +13,7 @@ def test_initialize_declares_latest_protocol_version_and_resources_capability():
 def test_resources_list_includes_qr_design():
     result = protocol.handle_tool_method("resources/list", {"id": 2}, api_key=None)
     uris = {r["uri"] for r in result["result"]["resources"]}
-    assert "ui://scanova/qr-design.html" in uris
+    assert get_resource_for_tool("set_qr_design").versioned_uri in uris
 
 
 def test_resources_read_known_uri():
@@ -69,8 +70,9 @@ def test_tools_call_includes_structured_content_for_ui_hydration(monkeypatch):
 def test_tools_list_declares_meta_for_ui_enabled_tool():
     result = protocol.handle_tool_method("tools/list", {"id": 7}, api_key="k")
     tools = {t["name"]: t for t in result["result"]["tools"]}
-    assert tools["list_qr_codes"]["_meta"]["openai/outputTemplate"] == "ui://scanova/qr-codes-list.html"
-    assert tools["list_qr_codes"]["_meta"]["ui"]["resourceUri"] == "ui://scanova/qr-codes-list.html"
+    expected = get_resource_for_tool("get_account_stats").versioned_uri
+    assert tools["get_account_stats"]["_meta"]["openai/outputTemplate"] == expected
+    assert tools["get_account_stats"]["_meta"]["ui"]["resourceUri"] == expected
 
 
 def test_tools_list_omits_meta_for_non_ui_tool():
@@ -79,11 +81,18 @@ def test_tools_list_omits_meta_for_non_ui_tool():
     assert "_meta" not in tools["query_docs"]
 
 
+def test_tools_list_omits_meta_for_list_qr_codes():
+    """Deliberately disabled — tested and working fine as plain text."""
+    result = protocol.handle_tool_method("tools/list", {"id": 10}, api_key="k")
+    tools = {t["name"]: t for t in result["result"]["tools"]}
+    assert "_meta" not in tools["list_qr_codes"]
+
+
 def test_tools_call_attaches_meta_for_ui_enabled_tool(monkeypatch):
     monkeypatch.setattr(ui_response, "UI_ELEMENTS_ENABLED", True, raising=False)
     monkeypatch.setattr(protocol, "execute_tool", lambda name, args, key: {"id": "qr-1", "pattern_info": "{}"})
     body = {"id": 6, "params": {"name": "set_qr_design", "arguments": {"qrid": "qr-1"}}}
     result = protocol.handle_tool_method("tools/call", body, api_key="k")
-    assert result["result"]["_meta"]["openai/outputTemplate"] == "ui://scanova/qr-design.html"
+    assert result["result"]["_meta"]["openai/outputTemplate"] == get_resource_for_tool("set_qr_design").versioned_uri
     # the text content block itself is still present and untouched in shape
     assert result["result"]["content"][0]["type"] == "text"

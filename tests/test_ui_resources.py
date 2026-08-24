@@ -17,8 +17,13 @@ def test_list_resources_includes_qr_design():
     assert "ui://scanova/forms.html" in uris
     assert "ui://scanova/lead-lists.html" in uris
     assert "ui://scanova/users.html" in uris
-    assert "ui://scanova/analytics-dashboard.html" in uris
+    assert "ui://scanova/account-stats.html" in uris
     assert "ui://scanova/analytics-export.html" in uris
+    assert "ui://scanova/design-options.html" in uris
+
+
+def test_get_resource_for_design_options_tool():
+    assert get_resource_for_tool("get_qr_design_options").uri == "ui://scanova/design-options.html"
 
 
 def test_get_resource_by_uri_hit():
@@ -47,11 +52,15 @@ def test_get_resource_for_creation_tools():
     assert get_resource_for_tool("create_folder").uri == "ui://scanova/create-folder.html"
 
 
-def test_download_tools_share_one_resource():
+def test_download_qr_code_resource():
     a = get_resource_for_tool("download_qr_code")
-    b = get_resource_for_tool("download_qr_printable")
-    assert a is not None and b is not None
-    assert a.uri == b.uri == "ui://scanova/download-qr.html"
+    assert a is not None
+    assert a.uri == "ui://scanova/download-qr.html"
+
+
+def test_download_qr_printable_not_registered():
+    """Removed for now (2026-08-21) — not exposed as a tool."""
+    assert get_resource_for_tool("download_qr_printable") is None
 
 
 def test_folders_tools_share_one_resource():
@@ -77,9 +86,15 @@ def test_user_tools_share_one_resource():
         assert get_resource_for_tool(tool).uri == "ui://scanova/users.html"
 
 
-def test_analytics_tools_share_one_resource():
-    for tool in ("get_account_stats", "get_qr_analytics"):
-        assert get_resource_for_tool(tool).uri == "ui://scanova/analytics-dashboard.html"
+def test_account_stats_resource():
+    assert get_resource_for_tool("get_account_stats").uri == "ui://scanova/account-stats.html"
+
+
+def test_get_qr_analytics_has_no_resource():
+    """The dashboard widget was simplified to show account stats only,
+    dropping the query-builder UI that used to trigger get_qr_analytics —
+    it now returns plain text with no widget."""
+    assert get_resource_for_tool("get_qr_analytics") is None
 
 
 def test_analytics_export_tools_share_one_resource():

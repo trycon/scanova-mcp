@@ -15,6 +15,8 @@ each of those was left out.
 from dataclasses import dataclass
 from pathlib import Path
 
+from mcp_http.ui_theme import SHARED_BRIDGE_SCRIPT, SHARED_STYLE
+
 _UI_DIR = Path(__file__).parent / "ui"
 
 # All UI resources are fully self-contained (inline CSS/JS, no fetch/XHR,
@@ -22,6 +24,18 @@ _UI_DIR = Path(__file__).parent / "ui"
 # declares the same empty allowlist here. Add per-resource overrides if a
 # widget ever needs to reach an external domain.
 _NO_EXTERNAL_CSP = {"connectDomains": [], "resourceDomains": []}
+
+# Bump this when a UI resource file changes and you're actively testing —
+# hosts (confirmed: ChatGPT) can cache a resources/read response per URI for
+# the lifetime of a conversation/connector, so re-serving updated content
+# under the *same* URI can go unnoticed until the client happens to refetch
+# tools/list. Appending a version suffix makes tools/list emit a URI the
+# client has never cached, forcing a fresh resources/read — no need to
+# remove/re-add the connector, usually not even a new conversation.
+# Internal code should always use UIResource.uri (the stable, unversioned
+# key) — only externally-emitted URIs (tools/list _meta, resources/list,
+# resources/read) go through versioned_uri.
+UI_ASSET_VERSION = "24"
 
 
 @dataclass(frozen=True)
@@ -34,6 +48,11 @@ class UIResource:
     @property
     def path(self) -> Path:
         return _UI_DIR / self.file_path
+
+    @property
+    def versioned_uri(self) -> str:
+        """The URI to actually hand to clients — see UI_ASSET_VERSION."""
+        return f"{self.uri}?v={UI_ASSET_VERSION}"
 
     @property
     def meta(self) -> dict:
@@ -55,7 +74,7 @@ _RESOURCES: dict[str, UIResource] = {
             uri="ui://scanova/create-qr-code.html",
             file_path="create_qr_code.html",
             mime_type="text/html;profile=mcp-app",
-            tools=("create_qr_code",),
+            tools=("create_qr_code", "open_qr_code_creation_form"),
         ),
         UIResource(
             uri="ui://scanova/create-folder.html",
@@ -67,13 +86,19 @@ _RESOURCES: dict[str, UIResource] = {
             uri="ui://scanova/download-qr.html",
             file_path="download_qr.html",
             mime_type="text/html;profile=mcp-app",
-            tools=("download_qr_code", "download_qr_printable"),
+            tools=("download_qr_code",),
         ),
         UIResource(
             uri="ui://scanova/qr-codes-list.html",
             file_path="qr_codes_list.html",
             mime_type="text/html;profile=mcp-app",
             tools=("list_qr_codes",),
+        ),
+        UIResource(
+            uri="ui://scanova/design-options.html",
+            file_path="design_options.html",
+            mime_type="text/html;profile=mcp-app",
+            tools=("get_qr_design_options",),
         ),
         UIResource(
             uri="ui://scanova/folders.html",
@@ -118,10 +143,10 @@ _RESOURCES: dict[str, UIResource] = {
             ),
         ),
         UIResource(
-            uri="ui://scanova/analytics-dashboard.html",
-            file_path="analytics_dashboard.html",
+            uri="ui://scanova/account-stats.html",
+            file_path="account_stats.html",
             mime_type="text/html;profile=mcp-app",
-            tools=("get_account_stats", "get_qr_analytics"),
+            tools=("get_account_stats",),
         ),
         UIResource(
             uri="ui://scanova/analytics-export.html",
@@ -141,10 +166,16 @@ def list_resources() -> list[UIResource]:
 def get_resource_by_uri(uri: str) -> UIResource | None:
     """Look up a resource by its logical URI, for resources/read.
 
+    Strips a "?v=..." version suffix first (see UI_ASSET_VERSION) — clients
+    echo back whatever URI we handed them, versioned or not, and old cached
+    versioned URIs must keep resolving to the (now-updated) resource rather
+    than 404ing.
+
     Falls back to a tool-name lookup when the URI isn't one of our own
     ui://scanova/... URIs — some clients request resources by
     "<connector_label>.<tool_name>" instead of the URI we returned in _meta.
     """
+    uri = uri.split("?", 1)[0]
     resource = _RESOURCES.get(uri)
     if resource is not None:
         return resource
@@ -160,9 +191,22 @@ def get_resource_for_tool(tool_name: str) -> UIResource | None:
     return None
 
 
+def _inject_shared_theme(html: str) -> str:
+    """
+    Insert the shared design tokens/components and Bridge factory before
+    </head>, so every widget file only needs to carry its own bespoke markup/
+    CSS/JS. Each widget's own <script> must call
+    `const Bridge = window.__scanovaBridge();` rather than defining its own
+    copy — see ui_theme.py.
+    """
+    injected = f"<style>{SHARED_STYLE}</style>\n<script>{SHARED_BRIDGE_SCRIPT}</script>\n</head>"
+    return html.replace("</head>", injected, 1)
+
+
 def read_resource_contents(uri: str) -> str | None:
-    """Return the resource's file contents, or None if the URI is unknown or the file is missing."""
+    """Return the resource's content (with the shared theme/bridge injected),
+    or None if the URI is unknown or the file is missing."""
     resource = get_resource_by_uri(uri)
     if resource is None or not resource.path.is_file():
         return None
-    return resource.path.read_text(encoding="utf-8")
+    return _inject_shared_theme(resource.path.read_text(encoding="utf-8"))

@@ -66,7 +66,7 @@ def resources_list_result(request_id):
         "id": request_id,
         "result": {
             "resources": [
-                {"uri": r.uri, "name": r.file_path, "mimeType": r.mime_type, "_meta": r.meta}
+                {"uri": r.versioned_uri, "name": r.file_path, "mimeType": r.mime_type, "_meta": r.meta}
                 for r in list_resources()
             ]
         },
@@ -88,7 +88,7 @@ def resources_read_result(request_id, uri: str):
         "result": {
             "contents": [
                 {
-                    "uri": resource.uri,
+                    "uri": resource.versioned_uri,
                     "mimeType": resource.mime_type,
                     "text": contents,
                     "_meta": resource.meta,

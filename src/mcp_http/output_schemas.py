@@ -157,6 +157,41 @@ SET_QR_DESIGN_OUTPUT = {
     },
 }
 
+# ── QR Code Creation & Validation ──────────────────────────────────────────── #
+
+GET_QR_CATEGORY_FIELDS_OUTPUT = {
+    "type": "object",
+    "description": "Either one category's info-field reference (when `category` was given) or the full {categories: {...}} catalog",
+    "properties": {
+        "category": {"type": "integer"},
+        "name": {"type": "string"},
+        "slug": {"type": "string"},
+        "documented": {"type": "boolean"},
+        "info_example": {"description": "Example info payload — object or array depending on the category"},
+        "notes": {"type": "string"},
+        "categories": {"type": "object", "description": "Present when no category was given — the full catalog keyed by category ID"},
+        **_ERROR,
+    },
+}
+
+OPEN_QR_CODE_CREATION_FORM_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "mode": {"type": "string"},
+        "prefill": {"type": "object"},
+    },
+}
+
+VALIDATE_QR_INFO_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "valid": {"type": "boolean"},
+        "message": {"type": "string"},
+        "error": {"description": "Validation error details when valid is false"},
+        **_ERROR,
+    },
+}
+
 # ── QR Code Management ─────────────────────────────────────────────────────── #
 
 CREATE_QR_CODE_OUTPUT = _QR_OBJECT
@@ -342,6 +377,20 @@ DELETE_FORM_OUTPUT = {
     },
 }
 
+CREATE_FORM_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "integer"},
+        "form_id": {"type": "string"},
+        "name": {"type": "string"},
+        "form_url": {"type": "string"},
+        "is_active": {"type": "boolean"},
+        "linked_qrs": {"type": "array"},
+        "data": {"type": "object"},
+        **_ERROR,
+    },
+}
+
 # ── Lead Lists ────────────────────────────────────────────────────────────── #
 
 LIST_LEAD_LISTS_OUTPUT = {
@@ -360,6 +409,59 @@ DELETE_LEAD_LIST_OUTPUT = {
     "properties": {
         "success": {"type": "boolean"},
         "message": {"type": "string"},
+        **_ERROR,
+    },
+}
+
+# ── Tags ──────────────────────────────────────────────────────────────────── #
+
+_TAG_OBJECT = {"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}}
+
+LIST_TAGS_OUTPUT = {
+    "type": "object",
+    "description": "Matches normalizer.py's paginated envelope shape — see LIST_QR_CODES_OUTPUT",
+    "properties": {
+        "ok": {"type": "boolean"},
+        "data": {
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer"},
+                "results": {"type": "array", "items": _TAG_OBJECT},
+            },
+        },
+        "pagination": {
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer"},
+                "next": {"type": ["integer", "null"]},
+                "previous": {"type": ["integer", "null"]},
+            },
+        },
+        **_ERROR,
+    },
+}
+
+# ── Account & Billing ─────────────────────────────────────────────────────── #
+
+GET_CURRENT_PLAN_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "is_active": {"type": "boolean"},
+        "is_free": {"type": "boolean"},
+        "expire": {"type": "string", "description": "YYYY-MM-DD, or 'Lifetime'"},
+        "is_expired": {"type": "boolean"},
+        "days_left": {"type": "integer"},
+        "recurring_enabled": {"type": "boolean"},
+        "plan": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer"},
+                "name": {"type": "string"},
+                "plan_type": {"type": "string"},
+                "quotas": {"type": "array", "items": {"type": "object"}},
+            },
+        },
+        "upcoming_plan": {"type": ["object", "null"]},
         **_ERROR,
     },
 }
@@ -405,57 +507,79 @@ LIST_USER_ROLES_OUTPUT = {
     },
 }
 
+CREATE_CUSTOM_ROLE_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "integer"},
+        "name": {"type": "string"},
+        "permissions": {"type": "array", "items": {"type": "object"}},
+        "is_custom": {"type": "boolean"},
+        **_ERROR,
+    },
+}
+
 # ── Lookup table: tool_name → outputSchema ────────────────────────────────── #
 
 TOOL_OUTPUT_SCHEMAS: dict[str, dict] = {
     # Docs bridge
     "probe_docs_mcp": PROBE_DOCS_MCP_OUTPUT,
     "query_docs": QUERY_DOCS_OUTPUT,
-    # Design
+    # QR Code Creation & Validation
+    "get_qr_categories": GET_QR_CATEGORIES_OUTPUT,
+    "get_qr_category_fields": GET_QR_CATEGORY_FIELDS_OUTPUT,
+    "validate_qr_info": VALIDATE_QR_INFO_OUTPUT,
+    "create_qr_code": CREATE_QR_CODE_OUTPUT,
+    "open_qr_code_creation_form": OPEN_QR_CODE_CREATION_FORM_OUTPUT,
+    # QR Code Design
     "get_qr_design_options": GET_QR_DESIGN_OPTIONS_OUTPUT,
     "set_qr_design": SET_QR_DESIGN_OUTPUT,
-    # QR management
-    "create_qr_code": CREATE_QR_CODE_OUTPUT,
+    # QR Code Lifecycle & Retrieval
     "list_qr_codes": LIST_QR_CODES_OUTPUT,
-    "update_qr_code": UPDATE_QR_CODE_OUTPUT,
     "retrieve_qr_code": RETRIEVE_QR_CODE_OUTPUT,
-    "download_qr_code": DOWNLOAD_QR_CODE_OUTPUT,
+    "update_qr_code": UPDATE_QR_CODE_OUTPUT,
     "activate_qr_code": ACTIVATE_QR_CODE_OUTPUT,
     "deactivate_qr_code": DEACTIVATE_QR_CODE_OUTPUT,
     "delete_qr_code": DELETE_QR_CODE_OUTPUT,
-    "get_qr_categories": GET_QR_CATEGORIES_OUTPUT,
+    # QR Code Export & Download
+    "download_qr_code": DOWNLOAD_QR_CODE_OUTPUT,
     "download_qr_printable": DOWNLOAD_QR_PRINTABLE_OUTPUT,
-    "attach_form_to_qr": ATTACH_DETACH_OUTPUT,
-    "detach_form_from_qr": ATTACH_DETACH_OUTPUT,
-    "attach_lead_list_to_qr": ATTACH_DETACH_OUTPUT,
-    "detach_lead_list_from_qr": ATTACH_DETACH_OUTPUT,
-    # Analytics
-    "get_account_stats": GET_ACCOUNT_STATS_OUTPUT,
-    "get_qr_analytics": GET_QR_ANALYTICS_OUTPUT,
-    "export_analytics": EXPORT_OUTPUT,
-    "export_raw_scans": EXPORT_OUTPUT,
-    # Folders
+    # Organization: Folders
     "create_folder": CREATE_FOLDER_OUTPUT,
     "list_folders": LIST_FOLDERS_OUTPUT,
     "update_folder": UPDATE_FOLDER_OUTPUT,
     "delete_folder": DELETE_FOLDER_OUTPUT,
     "move_qr_codes_to_folder": MOVE_QR_OUTPUT,
     "unassign_qr_codes_from_folder": MOVE_QR_OUTPUT,
+    # Organization: Tags
+    "list_tags": LIST_TAGS_OUTPUT,
     # Forms
     "list_forms": LIST_FORMS_OUTPUT,
     "retrieve_form": RETRIEVE_FORM_OUTPUT,
+    "create_form": CREATE_FORM_OUTPUT,
     "update_form": UPDATE_FORM_OUTPUT,
     "delete_form": DELETE_FORM_OUTPUT,
-    # Lead lists
+    "attach_form_to_qr": ATTACH_DETACH_OUTPUT,
+    "detach_form_from_qr": ATTACH_DETACH_OUTPUT,
+    # Lead Lists (legacy)
     "list_lead_lists": LIST_LEAD_LISTS_OUTPUT,
     "retrieve_lead_list": RETRIEVE_LEAD_LIST_OUTPUT,
     "update_lead_list": UPDATE_LEAD_LIST_OUTPUT,
     "delete_lead_list": DELETE_LEAD_LIST_OUTPUT,
-    # Users
+    "attach_lead_list_to_qr": ATTACH_DETACH_OUTPUT,
+    "detach_lead_list_from_qr": ATTACH_DETACH_OUTPUT,
+    # Analytics & Reporting
+    "get_account_stats": GET_ACCOUNT_STATS_OUTPUT,
+    "get_qr_analytics": GET_QR_ANALYTICS_OUTPUT,
+    "export_analytics": EXPORT_OUTPUT,
+    "export_raw_scans": EXPORT_OUTPUT,
+    # Account & Billing
+    "get_current_plan": GET_CURRENT_PLAN_OUTPUT,
+    # Team & Access Management
     "list_users": LIST_USERS_OUTPUT,
     "get_user": GET_USER_OUTPUT,
     "add_user": ADD_USER_OUTPUT,
     "remove_user": REMOVE_USER_OUTPUT,
     "list_user_roles": LIST_USER_ROLES_OUTPUT,
+    "create_custom_role": CREATE_CUSTOM_ROLE_OUTPUT,
     "update_user_role": UPDATE_USER_ROLE_OUTPUT,
 }

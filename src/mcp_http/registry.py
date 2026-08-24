@@ -8,24 +8,21 @@ from mcp_http.annotations import (
 from mcp_http.output_schemas import TOOL_OUTPUT_SCHEMAS
 from mcp_http.ui_response import tool_descriptor_meta
 from mcp_http.schemas import (
-    # Docs bridge + Design
+    # Docs bridge
     QUERY_DOCS_SCHEMA,
-    SET_QR_DESIGN_SCHEMA,
-    # QR Code
-    ATTACH_FORM_TO_QR_SCHEMA,
-    ATTACH_LEAD_LIST_TO_QR_SCHEMA,
+    # QR Code Creation & Validation
     CREATE_QR_PARAMS_SCHEMA,
-    DOWNLOAD_QR_PARAMS_SCHEMA,
-    DOWNLOAD_QR_PRINTABLE_SCHEMA,
     GET_QR_CATEGORIES_SCHEMA,
+    GET_QR_CATEGORY_FIELDS_SCHEMA,
+    OPEN_QR_CODE_CREATION_FORM_SCHEMA,
+    VALIDATE_QR_INFO_SCHEMA,
+    # QR Code Design
+    SET_QR_DESIGN_SCHEMA,
+    # QR Code Lifecycle & Retrieval / Export
+    DOWNLOAD_QR_PARAMS_SCHEMA,
     LIST_QR_CODES_INPUT_SCHEMA,
     QRID_SCHEMA,
     UPDATE_QR_PARAMS_SCHEMA,
-    # Analytics
-    ACCOUNT_STATS_SCHEMA,
-    EXPORT_ANALYTICS_SCHEMA,
-    EXPORT_RAW_SCANS_SCHEMA,
-    GET_QR_ANALYTICS_SCHEMA,
     # Folders
     CREATE_FOLDER_SCHEMA,
     DELETE_FOLDER_SCHEMA,
@@ -34,16 +31,27 @@ from mcp_http.schemas import (
     MOVE_QR_TO_FOLDER_SCHEMA,
     UNASSIGN_QR_FROM_FOLDER_SCHEMA,
     UPDATE_FOLDER_SCHEMA,
+    # Tags
+    LIST_TAGS_SCHEMA,
     # Forms
+    ATTACH_FORM_TO_QR_SCHEMA,
+    CREATE_FORM_SCHEMA,
     FORM_ID_SCHEMA,
     LIST_FORMS_SCHEMA,
     UPDATE_FORM_SCHEMA,
     # Lead Lists
+    ATTACH_LEAD_LIST_TO_QR_SCHEMA,
     LEAD_LIST_ID_SCHEMA,
     LIST_LEAD_LISTS_SCHEMA,
     UPDATE_LEAD_LIST_SCHEMA,
+    # Analytics
+    ACCOUNT_STATS_SCHEMA,
+    GET_QR_ANALYTICS_SCHEMA,
+    # Account & Billing
+    GET_CURRENT_PLAN_SCHEMA,
     # Users
     ADD_USER_SCHEMA,
+    CREATE_CUSTOM_ROLE_SCHEMA,
     UPDATE_USER_ROLE_SCHEMA,
     USER_ID_SCHEMA,
 )
@@ -70,7 +78,7 @@ def list_mcp_tools():
     """Return tool descriptors for MCP ``tools/list`` responses."""
     return [
         # ------------------------------------------------------------------ #
-        # Docs MCP Bridge
+        # Docs MCP Bridge (infrastructure utility, not a business domain)
         # ------------------------------------------------------------------ #
         _tool(
             "probe_docs_mcp",
@@ -91,6 +99,69 @@ def list_mcp_tools():
             ),
             READ_ONLY_TOOL_ANNOTATIONS_JSON,
             QUERY_DOCS_SCHEMA,
+        ),
+        # ------------------------------------------------------------------ #
+        # QR Code Creation & Validation
+        # ------------------------------------------------------------------ #
+        _tool(
+            "get_qr_categories",
+            "Get QR code categories",
+            "List available QR code categories (URL, vCard, WiFi, Document, Social Media, etc.)",
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            GET_QR_CATEGORIES_SCHEMA,
+        ),
+        _tool(
+            "get_qr_category_fields",
+            "Get QR category field reference",
+            (
+                "Return the required/optional `info` JSON field reference for a QR code category "
+                "(or all categories if none is given) — static reference data, no API call. "
+                "Call this before create_qr_code/update_qr_code so the `info` payload matches the "
+                "shape the category expects. Use validate_qr_info afterward to confirm a specific payload."
+            ),
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            GET_QR_CATEGORY_FIELDS_SCHEMA,
+        ),
+        _tool(
+            "validate_qr_info",
+            "Validate QR code info payload",
+            (
+                "Validate a category + info JSON payload before calling create_qr_code or update_qr_code — "
+                "catches malformed JSON, missing required fields, and invalid URLs/emails ahead of time. "
+                "Call get_qr_category_fields first if you're unsure of the expected shape for a category."
+            ),
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            VALIDATE_QR_INFO_SCHEMA,
+        ),
+        _tool(
+            "create_qr_code",
+            "Create QR code",
+            (
+                "Create a new QR code. Only call this when you already have all required fields "
+                "(name, category, qr_type, info) explicitly stated or clearly inferable from the "
+                "conversation — never invent or guess placeholder values. If the user asked to "
+                "create a QR code but hasn't given enough detail, call open_qr_code_creation_form "
+                "instead so they can fill in a form (do not call this tool with guesses just to "
+                "show the form — on success this tool does NOT show any UI, only a text confirmation; "
+                "the form only appears automatically if this call fails, pre-filled with what was "
+                "attempted, so the user can fix and retry). "
+                "For categories you're unsure about, call get_qr_category_fields first to see the "
+                "expected `info` shape, and optionally validate_qr_info to check the payload before creating."
+            ),
+            WRITE_TOOL_ANNOTATIONS_JSON,
+            {"type": "object", "properties": {"params": CREATE_QR_PARAMS_SCHEMA}, "required": ["params"]},
+        ),
+        _tool(
+            "open_qr_code_creation_form",
+            "Open QR code creation form",
+            (
+                "Show an interactive form for creating a QR code. Use this when the user wants to "
+                "create a QR code but hasn't provided enough information (missing or ambiguous "
+                "name/category/content) — do not call create_qr_code with guessed values in this case. "
+                "Any fields already known can be passed here to pre-fill the form."
+            ),
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            OPEN_QR_CODE_CREATION_FORM_SCHEMA,
         ),
         # ------------------------------------------------------------------ #
         # QR Code Design
@@ -121,15 +192,8 @@ def list_mcp_tools():
             SET_QR_DESIGN_SCHEMA,
         ),
         # ------------------------------------------------------------------ #
-        # QR Code Management
+        # QR Code Lifecycle & Retrieval
         # ------------------------------------------------------------------ #
-        _tool(
-            "create_qr_code",
-            "Create QR code",
-            "Create a new QR code. Can be called with: create qr, make qr code, generate qr",
-            WRITE_TOOL_ANNOTATIONS_JSON,
-            {"type": "object", "properties": {"params": CREATE_QR_PARAMS_SCHEMA}, "required": ["params"]},
-        ),
         _tool(
             "list_qr_codes",
             "List QR codes",
@@ -142,6 +206,13 @@ def list_mcp_tools():
             LIST_QR_CODES_INPUT_SCHEMA,
         ),
         _tool(
+            "retrieve_qr_code",
+            "Retrieve QR code details",
+            "Get details of a specific QR code",
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            {"type": "object", "properties": {"qrid": QRID_SCHEMA}, "required": ["qrid"]},
+        ),
+        _tool(
             "update_qr_code",
             "Update QR code",
             "Update an existing QR code",
@@ -150,24 +221,6 @@ def list_mcp_tools():
                 "type": "object",
                 "properties": {"qrid": QRID_SCHEMA, "params": UPDATE_QR_PARAMS_SCHEMA},
                 "required": ["qrid", "params"],
-            },
-        ),
-        _tool(
-            "retrieve_qr_code",
-            "Retrieve QR code details",
-            "Get details of a specific QR code",
-            READ_ONLY_TOOL_ANNOTATIONS_JSON,
-            {"type": "object", "properties": {"qrid": QRID_SCHEMA}, "required": ["qrid"]},
-        ),
-        _tool(
-            "download_qr_code",
-            "Download QR code image",
-            "Download QR code image in PNG, JPG, PDF, SVG, or EPS format",
-            READ_ONLY_TOOL_ANNOTATIONS_JSON,
-            {
-                "type": "object",
-                "properties": {"qrid": QRID_SCHEMA, "params": DOWNLOAD_QR_PARAMS_SCHEMA},
-                "required": ["qrid"],
             },
         ),
         _tool(
@@ -191,81 +244,26 @@ def list_mcp_tools():
             DESTRUCTIVE_TOOL_ANNOTATIONS_JSON,
             {"type": "object", "properties": {"qrid": QRID_SCHEMA}, "required": ["qrid"]},
         ),
-        _tool(
-            "get_qr_categories",
-            "Get QR code categories",
-            "List available QR code categories (URL, vCard, WiFi, Document, Social Media, etc.)",
-            READ_ONLY_TOOL_ANNOTATIONS_JSON,
-            GET_QR_CATEGORIES_SCHEMA,
-        ),
-        _tool(
-            "download_qr_printable",
-            "Download printable QR code",
-            "Generate a print-optimised PDF version of a QR code",
-            READ_ONLY_TOOL_ANNOTATIONS_JSON,
-            DOWNLOAD_QR_PRINTABLE_SCHEMA,
-        ),
-        _tool(
-            "attach_form_to_qr",
-            "Attach form to QR code",
-            "Attach a lead capture form to a QR code",
-            WRITE_TOOL_ANNOTATIONS_JSON,
-            ATTACH_FORM_TO_QR_SCHEMA,
-        ),
-        _tool(
-            "detach_form_from_qr",
-            "Detach form from QR code",
-            "Remove the lead capture form from a QR code",
-            WRITE_TOOL_ANNOTATIONS_JSON,
-            {"type": "object", "properties": {"qrid": QRID_SCHEMA}, "required": ["qrid"]},
-        ),
-        _tool(
-            "attach_lead_list_to_qr",
-            "Attach lead list to QR code",
-            "Attach a lead list to a QR code for lead capture",
-            WRITE_TOOL_ANNOTATIONS_JSON,
-            ATTACH_LEAD_LIST_TO_QR_SCHEMA,
-        ),
-        _tool(
-            "detach_lead_list_from_qr",
-            "Detach lead list from QR code",
-            "Remove the lead list from a QR code",
-            WRITE_TOOL_ANNOTATIONS_JSON,
-            {"type": "object", "properties": {"qrid": QRID_SCHEMA}, "required": ["qrid"]},
-        ),
         # ------------------------------------------------------------------ #
-        # Analytics
+        # QR Code Export & Download
         # ------------------------------------------------------------------ #
         _tool(
-            "get_account_stats",
-            "Get account statistics",
-            "Retrieve account-level usage counters (total QR codes, scans, users, etc.)",
+            "download_qr_code",
+            "Download QR code image",
+            "Download QR code image in PNG, JPG, or PDF format",
             READ_ONLY_TOOL_ANNOTATIONS_JSON,
-            ACCOUNT_STATS_SCHEMA,
+            {
+                "type": "object",
+                "properties": {"qrid": QRID_SCHEMA, "params": DOWNLOAD_QR_PARAMS_SCHEMA},
+                "required": ["qrid"],
+            },
         ),
-        _tool(
-            "get_qr_analytics",
-            "Get QR code analytics",
-            "Retrieve QR code performance metrics broken down by device, geography, date, etc.",
-            READ_ONLY_TOOL_ANNOTATIONS_JSON,
-            GET_QR_ANALYTICS_SCHEMA,
-        ),
-        _tool(
-            "export_analytics",
-            "Export analytics report",
-            "Export QR code analytics as an Excel or PDF report",
-            READ_ONLY_TOOL_ANNOTATIONS_JSON,
-            EXPORT_ANALYTICS_SCHEMA,
-        ),
-        _tool(
-            "export_raw_scans",
-            "Export raw scan data",
-            "Export row-level scan logs as CSV or Excel for custom BI pipelines",
-            READ_ONLY_TOOL_ANNOTATIONS_JSON,
-            EXPORT_RAW_SCANS_SCHEMA,
-        ),
+        # download_qr_printable removed for now (2026-08-21) — not registered
+        # as a tool, but the underlying qrcode.download_qr_printable function
+        # and DOWNLOAD_QR_PRINTABLE_SCHEMA/_OUTPUT are left in place for an
+        # easy re-enable later.
         # ------------------------------------------------------------------ #
-        # Folder Management
+        # Organization: Folders
         # ------------------------------------------------------------------ #
         _tool(
             "create_folder",
@@ -316,6 +314,19 @@ def list_mcp_tools():
             UNASSIGN_QR_FROM_FOLDER_SCHEMA,
         ),
         # ------------------------------------------------------------------ #
+        # Organization: Tags
+        # ------------------------------------------------------------------ #
+        _tool(
+            "list_tags",
+            "List tags",
+            (
+                "List tags attached to (or assignable against) the account's QR codes. "
+                "Read-only — tags are created implicitly when attached to a QR code, not through a standalone call."
+            ),
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            LIST_TAGS_SCHEMA,
+        ),
+        # ------------------------------------------------------------------ #
         # Forms
         # ------------------------------------------------------------------ #
         _tool(
@@ -333,6 +344,16 @@ def list_mcp_tools():
             {"type": "object", "properties": {"form_id": FORM_ID_SCHEMA}, "required": ["form_id"]},
         ),
         _tool(
+            "create_form",
+            "Create form",
+            (
+                "Create a new lead-capture form. Optionally pass qr_id to attach it to a dynamic QR "
+                "code immediately, or use attach_form_to_qr afterward."
+            ),
+            WRITE_TOOL_ANNOTATIONS_JSON,
+            CREATE_FORM_SCHEMA,
+        ),
+        _tool(
             "update_form",
             "Update form",
             "Update a form's name or active status",
@@ -346,13 +367,27 @@ def list_mcp_tools():
             DESTRUCTIVE_TOOL_ANNOTATIONS_JSON,
             {"type": "object", "properties": {"form_id": FORM_ID_SCHEMA}, "required": ["form_id"]},
         ),
+        _tool(
+            "attach_form_to_qr",
+            "Attach form to QR code",
+            "Attach a lead capture form to a QR code",
+            WRITE_TOOL_ANNOTATIONS_JSON,
+            ATTACH_FORM_TO_QR_SCHEMA,
+        ),
+        _tool(
+            "detach_form_from_qr",
+            "Detach form from QR code",
+            "Remove the lead capture form from a QR code",
+            WRITE_TOOL_ANNOTATIONS_JSON,
+            {"type": "object", "properties": {"qrid": QRID_SCHEMA}, "required": ["qrid"]},
+        ),
         # ------------------------------------------------------------------ #
-        # Lead Lists
+        # Lead Lists (legacy — superseded by Forms; maintenance only)
         # ------------------------------------------------------------------ #
         _tool(
             "list_lead_lists",
             "List lead lists",
-            "List all lead lists, optionally filtered by active status",
+            "List all lead lists, optionally filtered by active status. Legacy feature — Forms is the recommended lead-capture tool going forward.",
             READ_ONLY_TOOL_ANNOTATIONS_JSON,
             LIST_LEAD_LISTS_SCHEMA,
         ),
@@ -385,8 +420,53 @@ def list_mcp_tools():
                 "required": ["lead_list_id"],
             },
         ),
+        _tool(
+            "attach_lead_list_to_qr",
+            "Attach lead list to QR code",
+            "Attach a lead list to a QR code for lead capture",
+            WRITE_TOOL_ANNOTATIONS_JSON,
+            ATTACH_LEAD_LIST_TO_QR_SCHEMA,
+        ),
+        _tool(
+            "detach_lead_list_from_qr",
+            "Detach lead list from QR code",
+            "Remove the lead list from a QR code",
+            WRITE_TOOL_ANNOTATIONS_JSON,
+            {"type": "object", "properties": {"qrid": QRID_SCHEMA}, "required": ["qrid"]},
+        ),
         # ------------------------------------------------------------------ #
-        # User Management
+        # Analytics & Reporting
+        # ------------------------------------------------------------------ #
+        _tool(
+            "get_account_stats",
+            "Get account statistics",
+            "Retrieve account-level usage counters (total QR codes, scans, users, etc.)",
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            ACCOUNT_STATS_SCHEMA,
+        ),
+        _tool(
+            "get_qr_analytics",
+            "Get QR code analytics",
+            "Retrieve QR code performance metrics broken down by device, geography, date, etc.",
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            GET_QR_ANALYTICS_SCHEMA,
+        ),
+        # export_analytics / export_raw_scans removed for now (2026-08-24) —
+        # not registered as tools, but the underlying analytics.py functions
+        # and their EXPORT_ANALYTICS_SCHEMA/EXPORT_RAW_SCANS_SCHEMA/output
+        # schemas are left in place for an easy re-enable later.
+        # ------------------------------------------------------------------ #
+        # Account & Billing
+        # ------------------------------------------------------------------ #
+        _tool(
+            "get_current_plan",
+            "Get current plan",
+            "Retrieve the account's active subscription plan — expiry, billing state, and the full quota list it grants",
+            READ_ONLY_TOOL_ANNOTATIONS_JSON,
+            GET_CURRENT_PLAN_SCHEMA,
+        ),
+        # ------------------------------------------------------------------ #
+        # Team & Access Management
         # ------------------------------------------------------------------ #
         _tool(
             "list_users",
@@ -422,6 +502,16 @@ def list_mcp_tools():
             "List all available user roles that can be assigned",
             READ_ONLY_TOOL_ANNOTATIONS_JSON,
             {"type": "object", "properties": {}},
+        ),
+        _tool(
+            "create_custom_role",
+            "Create custom role",
+            (
+                "Create a custom role/access-level (requires a dedicated plan quota — a 403 means the "
+                "plan doesn't include it). Call list_user_roles first to see existing roles and valid permission IDs."
+            ),
+            WRITE_TOOL_ANNOTATIONS_JSON,
+            CREATE_CUSTOM_ROLE_SCHEMA,
         ),
         _tool(
             "update_user_role",

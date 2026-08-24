@@ -6,27 +6,15 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
 <title>Export Analytics</title>
 <style>
-  :root {
-    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
-    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); max-width: 380px; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  .row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
-  .row label { flex: 0 0 90px; color: var(--muted); font-size: 12px; }
-  .row input, .row select { flex: 1; min-width: 100px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  body { max-width: 380px; }
+  .row { flex-wrap: wrap; }
+  .row label { flex: 0 0 90px; }
+  .row input, .row select { flex: 1; min-width: 100px; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
-  button, a.download-link {
-    padding: 8px 14px; border: none; border-radius: var(--radius); background: var(--accent);
-    color: #fff; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block;
+  a.download-link {
+    padding: 8px 14px; border-radius: var(--radius); background: var(--accent);
+    color: #fff; font-weight: 600; text-decoration: none; display: inline-block;
   }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .status { margin-top: 10px; font-size: 12px; color: var(--muted); min-height: 16px; }
-  .error { color: var(--danger); }
-  .success { color: var(--success); }
 </style>
 </head>
 <body>
@@ -82,93 +70,7 @@
 <div id="link-slot"></div>
 
 <script>
-const Bridge = (function () {
-  if (window.openai && typeof window.openai.callTool === "function") {
-    return {
-      convention: "openai",
-      ready: Promise.resolve(),
-      getInitialData: () => window.openai.toolOutput || null,
-      // window.openai.callTool resolves to {content, structuredContent, _meta} —
-      // unwrap structuredContent so callers get the same envelope shape as the
-      // postMessage branch's callTool below (and as toolOutput already is).
-      callTool: (name, args) =>
-        window.openai.callTool(name, args).then((result) => (result && result.structuredContent) || null),
-      onToolResult: () => {},
-    };
-  }
-
-  // Standard MCP Apps postMessage bridge (spec 2026-01-26,
-  // https://apps.extensions.modelcontextprotocol.io). The host will not
-  // render or send anything to this iframe until it receives our
-  // ui/notifications/initialized notification, so that handshake must
-  // complete before anything else happens.
-  let nextId = 0;
-  const pending = new Map();
-  const toolResultHandlers = [];
-
-  function request(method, params) {
-    return new Promise((resolve, reject) => {
-      const id = ++nextId;
-      pending.set(id, { resolve, reject });
-      window.parent.postMessage({ jsonrpc: "2.0", id, method, params: params || {} }, "*");
-    });
-  }
-
-  function notify(method, params) {
-    window.parent.postMessage({ jsonrpc: "2.0", method, params: params || {} }, "*");
-  }
-
-  window.addEventListener("message", (event) => {
-    const msg = event.data;
-    if (!msg || typeof msg !== "object" || msg.jsonrpc !== "2.0") return;
-
-    if (msg.id !== undefined && pending.has(msg.id)) {
-      const { resolve, reject } = pending.get(msg.id);
-      pending.delete(msg.id);
-      if (msg.error) reject(msg.error); else resolve(msg.result);
-      return;
-    }
-
-    if (msg.method === "ui/notifications/tool-result") {
-      const data = (msg.params && msg.params.structuredContent) || null;
-      toolResultHandlers.forEach((cb) => cb(data));
-    }
-  });
-
-  const ready = request("ui/initialize", {
-    capabilities: {},
-    appInfo: { name: "scanova-mcp-ui", version: "1.0.0" },
-    protocolVersion: "2026-01-26",
-    appCapabilities: { experimental: {}, tools: { listChanged: false }, availableDisplayModes: ["inline"] },
-  }).then(() => {
-    notify("ui/notifications/initialized", {});
-  });
-
-  // Tell the host how big this widget actually is — without this, hosts
-  // fall back to a small default iframe size and the content has to be
-  // scrolled. Report once ready, then on every subsequent content resize.
-  function reportSize() {
-    notify("ui/notifications/size-changed", {
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight,
-    });
-  }
-  ready.then(reportSize);
-  if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(reportSize).observe(document.documentElement);
-  }
-
-  return {
-    convention: "postMessage",
-    ready,
-    getInitialData: () => null,
-    callTool: (name, args) =>
-      request("tools/call", { name, arguments: args }).then(
-        (result) => (result && result.structuredContent) || null
-      ),
-    onToolResult: (cb) => toolResultHandlers.push(cb),
-  };
-})();
+const Bridge = window.__scanovaBridge();
 
 const statusEl = document.getElementById("status");
 const linkSlot = document.getElementById("link-slot");

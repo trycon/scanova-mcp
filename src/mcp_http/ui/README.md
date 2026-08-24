@@ -33,11 +33,11 @@ Runbook per `docs/mcp-ui-architecture.md` Part 16. Follow these steps for every 
 | `forms.html` | `list_forms`, `retrieve_form`, `update_form`, `delete_form` |
 | `lead-lists.html` | `list_lead_lists`, `retrieve_lead_list`, `update_lead_list`, `delete_lead_list` |
 | `users.html` | `list_users`, `get_user`, `add_user`, `remove_user`, `list_user_roles`, `update_user_role` |
-| `analytics-dashboard.html` | `get_account_stats`, `get_qr_analytics` |
+| `account-stats.html` | `get_account_stats` |
 | `analytics-export.html` | `export_analytics`, `export_raw_scans` |
 
-`probe_docs_mcp` and `query_docs` deliberately have no UI resource — see the tool audit in `docs/mcp-ui-architecture.md` Part 11.
+`probe_docs_mcp` and `query_docs` deliberately have no UI resource — see the tool audit in `docs/mcp-ui-architecture.md` Part 11. `get_qr_analytics` also deliberately has no UI resource (2026-08-24) — the dashboard widget was simplified to show account stats only, dropping the query-builder UI that used to trigger it; it now returns plain text.
 
 ## Known gap
 
-`analytics-dashboard.html`/`analytics-export.html` were built vanilla-JS by explicit instruction, holding off on the Preact/Vite build pipeline `docs/mcp-ui-architecture.md` §7/Phase 4 originally called for. The bar chart in `analytics-dashboard.html` is a hand-rolled inline-SVG/CSS bar, and `get_qr_analytics` row rendering is defensive/heuristic (`pickLabelAndValue`) because `output_schemas.py`'s `GET_QR_ANALYTICS_OUTPUT` only pins `{data: array of objects, total: int}`, not per-row field names. If a real response shape is available, tighten this heuristic. Separately: `output_schemas.py`'s `EXPORT_OUTPUT` documents a `download_url` field that `analytics.py`'s actual `export_analytics`/`export_raw_scans` implementations don't return (they return `data_base64`/`content_type`/`size_bytes`, matching `download_qr_code`) — `analytics-export.html` handles both, but the schema/implementation drift itself is a pre-existing issue worth fixing independently of this UI work.
+`analytics-export.html` was built vanilla-JS by explicit instruction, holding off on the Preact/Vite build pipeline `docs/mcp-ui-architecture.md` §7/Phase 4 originally called for. Separately: `output_schemas.py`'s `EXPORT_OUTPUT` documents a `download_url` field that `analytics.py`'s actual `export_analytics`/`export_raw_scans` implementations don't return (they return `data_base64`/`content_type`/`size_bytes`, matching `download_qr_code`) — `analytics-export.html` handles both, but the schema/implementation drift itself is a pre-existing issue worth fixing independently of this UI work.

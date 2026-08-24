@@ -6,32 +6,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
 <title>Lead Lists</title>
 <style>
-  :root {
-    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
-    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px; --row-hover: #f4f6f8;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; --row-hover: #1e2229; }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   .toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); font-size: 13px; }
-  th { color: var(--muted); font-weight: 600; }
-  tr:hover td { background: var(--row-hover); }
   td.actions { white-space: nowrap; }
-  input[type="text"] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
-  button { padding: 6px 10px; border: none; border-radius: var(--radius); background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-size: 12px; }
-  button.link { background: none; color: var(--accent); text-decoration: underline; padding: 0; font-weight: 500; }
-  button.danger { background: var(--danger); }
-  .empty { color: var(--muted); text-align: center; padding: 20px 0; }
-  .status { margin-top: 8px; font-size: 12px; color: var(--muted); min-height: 16px; }
-  .error { color: var(--danger); }
-  .success { color: var(--success); }
-  .confirm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; }
-  .confirm-box { background: var(--bg); color: var(--fg); border-radius: var(--radius); padding: 16px; width: 240px; }
-  .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  button { padding: 6px 10px; font-size: 12px; }
+  .confirm-box { width: 240px; }
 </style>
 </head>
 <body>
@@ -48,93 +26,7 @@
 <div id="modal-slot"></div>
 
 <script>
-const Bridge = (function () {
-  if (window.openai && typeof window.openai.callTool === "function") {
-    return {
-      convention: "openai",
-      ready: Promise.resolve(),
-      getInitialData: () => window.openai.toolOutput || null,
-      // window.openai.callTool resolves to {content, structuredContent, _meta} —
-      // unwrap structuredContent so callers get the same envelope shape as the
-      // postMessage branch's callTool below (and as toolOutput already is).
-      callTool: (name, args) =>
-        window.openai.callTool(name, args).then((result) => (result && result.structuredContent) || null),
-      onToolResult: () => {},
-    };
-  }
-
-  // Standard MCP Apps postMessage bridge (spec 2026-01-26,
-  // https://apps.extensions.modelcontextprotocol.io). The host will not
-  // render or send anything to this iframe until it receives our
-  // ui/notifications/initialized notification, so that handshake must
-  // complete before anything else happens.
-  let nextId = 0;
-  const pending = new Map();
-  const toolResultHandlers = [];
-
-  function request(method, params) {
-    return new Promise((resolve, reject) => {
-      const id = ++nextId;
-      pending.set(id, { resolve, reject });
-      window.parent.postMessage({ jsonrpc: "2.0", id, method, params: params || {} }, "*");
-    });
-  }
-
-  function notify(method, params) {
-    window.parent.postMessage({ jsonrpc: "2.0", method, params: params || {} }, "*");
-  }
-
-  window.addEventListener("message", (event) => {
-    const msg = event.data;
-    if (!msg || typeof msg !== "object" || msg.jsonrpc !== "2.0") return;
-
-    if (msg.id !== undefined && pending.has(msg.id)) {
-      const { resolve, reject } = pending.get(msg.id);
-      pending.delete(msg.id);
-      if (msg.error) reject(msg.error); else resolve(msg.result);
-      return;
-    }
-
-    if (msg.method === "ui/notifications/tool-result") {
-      const data = (msg.params && msg.params.structuredContent) || null;
-      toolResultHandlers.forEach((cb) => cb(data));
-    }
-  });
-
-  const ready = request("ui/initialize", {
-    capabilities: {},
-    appInfo: { name: "scanova-mcp-ui", version: "1.0.0" },
-    protocolVersion: "2026-01-26",
-    appCapabilities: { experimental: {}, tools: { listChanged: false }, availableDisplayModes: ["inline"] },
-  }).then(() => {
-    notify("ui/notifications/initialized", {});
-  });
-
-  // Tell the host how big this widget actually is — without this, hosts
-  // fall back to a small default iframe size and the content has to be
-  // scrolled. Report once ready, then on every subsequent content resize.
-  function reportSize() {
-    notify("ui/notifications/size-changed", {
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight,
-    });
-  }
-  ready.then(reportSize);
-  if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(reportSize).observe(document.documentElement);
-  }
-
-  return {
-    convention: "postMessage",
-    ready,
-    getInitialData: () => null,
-    callTool: (name, args) =>
-      request("tools/call", { name, arguments: args }).then(
-        (result) => (result && result.structuredContent) || null
-      ),
-    onToolResult: (cb) => toolResultHandlers.push(cb),
-  };
-})();
+const Bridge = window.__scanovaBridge();
 
 const rowsEl = document.getElementById("rows");
 const statusEl = document.getElementById("status");

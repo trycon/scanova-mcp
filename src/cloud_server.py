@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -92,6 +93,19 @@ async def openai_apps_challenge():
 async def mcp_endpoint(request: Request):
     try:
         body = await request.json()
+    except json.JSONDecodeError:
+        # Empty/malformed body — a client mistake (or a bot/health-check
+        # probing the endpoint), not a server fault. Distinct from the
+        # generic except below: proper JSON-RPC Parse error code, 400 (not
+        # 500), and logged at warning (not error) so it doesn't read as a
+        # scanova-mcp bug in the logs.
+        log.warning("Received non-JSON or empty request body on /mcp")
+        return JSONResponse(
+            content={"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error: invalid or empty JSON body"}},
+            status_code=400,
+        )
+
+    try:
         method = body.get("method")
         api_key = extract_api_key(request)
 
@@ -120,7 +134,7 @@ async def mcp_endpoint(request: Request):
         return JSONResponse(
             content={
                 "jsonrpc": "2.0",
-                "id": body.get("id") if "body" in locals() else None,
+                "id": body.get("id") if isinstance(body, dict) else None,
                 "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
             },
             status_code=500,

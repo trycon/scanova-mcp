@@ -13,31 +13,31 @@ def _auth_error():
 
 
 def list_users(api_key: str = None) -> dict:
-    """GET /user/ — list all users in the account."""
+    """GET /multi-users/ — list all users in the account."""
     if not api_key:
         return _auth_error()
     try:
-        resp = requests.get(f"{_BASE}/user/", headers=_headers(api_key))
+        resp = requests.get(f"{_BASE}/multi-users/", headers=_headers(api_key))
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
 
 
 def get_user(user_id: str, api_key: str = None) -> dict:
-    """GET /user/{id}/ — get details of a specific user."""
+    """GET /multi-users/{id}/ — get details of a specific user."""
     if not api_key:
         return _auth_error()
     if not user_id:
         return {"error": "user_id is required"}
     try:
-        resp = requests.get(f"{_BASE}/user/{user_id}/", headers=_headers(api_key))
+        resp = requests.get(f"{_BASE}/multi-users/{user_id}/", headers=_headers(api_key))
         return resp.json()
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
 
 
 def add_user(email: str, role: str, api_key: str = None) -> dict:
-    """POST /user/ — invite a new user to the account."""
+    """POST /multi-users/ — invite a new user to the account."""
     if not api_key:
         return _auth_error()
     if not email:
@@ -46,7 +46,7 @@ def add_user(email: str, role: str, api_key: str = None) -> dict:
         return {"error": "role is required"}
     try:
         resp = requests.post(
-            f"{_BASE}/user/",
+            f"{_BASE}/multi-users/",
             headers=_headers(api_key),
             json={"email": email, "role": role},
         )
@@ -56,13 +56,13 @@ def add_user(email: str, role: str, api_key: str = None) -> dict:
 
 
 def remove_user(user_id: str, api_key: str = None) -> dict:
-    """DELETE /user/{id}/ — remove a user from the account."""
+    """DELETE /multi-users/{id}/ — remove a user from the account."""
     if not api_key:
         return _auth_error()
     if not user_id:
         return {"error": "user_id is required"}
     try:
-        resp = requests.delete(f"{_BASE}/user/{user_id}/", headers=_headers(api_key))
+        resp = requests.delete(f"{_BASE}/multi-users/{user_id}/", headers=_headers(api_key))
         if resp.status_code == 204:
             return {"success": True, "message": "User removed"}
         return resp.json()
@@ -81,19 +81,38 @@ def list_user_roles(api_key: str = None) -> dict:
         return {"error": f"API request failed: {str(e)}"}
 
 
-def update_user_role(user_id: str, role: str, api_key: str = None) -> dict:
-    """PATCH /user/{id}/ — update a user's role."""
+def create_custom_role(name: str, permissions: list, api_key: str = None) -> dict:
+    """POST /multi-users/access-levels/ — create a custom role (plan-gated feature)."""
+    if not api_key:
+        return _auth_error()
+    if not name:
+        return {"error": "name is required"}
+    if not permissions:
+        return {"error": "permissions is required"}
+    try:
+        resp = requests.post(
+            f"{_BASE}/multi-users/access-levels/",
+            headers=_headers(api_key),
+            json={"name": name, "permissions": permissions},
+        )
+        return resp.json()
+    except requests.RequestException as e:
+        return {"error": f"API request failed: {str(e)}"}
+
+
+def update_user_role(user_id: str, access_level: str, api_key: str = None) -> dict:
+    """PATCH /multi-users/{id}/ — update a user's access_level."""
     if not api_key:
         return _auth_error()
     if not user_id:
         return {"error": "user_id is required"}
-    if not role:
-        return {"error": "role is required"}
+    if not access_level:
+        return {"error": "access_level is required"}
     try:
         resp = requests.patch(
-            f"{_BASE}/user/{user_id}/",
+            f"{_BASE}/multi-users/{user_id}/",
             headers=_headers(api_key),
-            json={"role": role},
+            json={"access_level": access_level},
         )
         return resp.json()
     except requests.RequestException as e:
