@@ -3,7 +3,7 @@ name: Build and Push to ECR
 on:
   push:
     branches:
-      - migration/aws-express-mode
+      - main
 
 permissions:
   contents: read
