@@ -1,15 +1,16 @@
 # Scanova MCP Server
 
-A Model Context Protocol (MCP) server for creating and managing QR codes using the Scanova API. This server provides tools for QR code creation, management, and download through MCP-compatible IDEs like Cursor and VS Code.
+A Model Context Protocol (MCP) server for managing your Scanova QR code platform using the Scanova API. This server provides tools for QR code creation, design, and lifecycle management; folder organization; lead-capture forms and lead lists; analytics exports; and account user administration, through MCP-compatible IDEs like Cursor, VS Code, and Claude Desktop.
 
 ## Features
 
-- ✅ **Create QR Codes**: Generate dynamic QR codes with custom URLs
-- ✅ **List QR Codes**: View all your existing QR codes with pagination
-- ✅ **Update QR Codes**: Modify existing QR codes with new URLs or names
-- ✅ **Retrieve QR Code Details**: Get detailed information about specific QR codes
-- ✅ **Download QR Codes**: Download QR code images in various formats
-- ✅ **Activate/Deactivate QR Codes**: Control QR code status
+- ✅ **QR Codes**: Create, list, retrieve, update, activate/deactivate, and delete QR codes; download them as PNG/JPG/PDF/SVG/EPS or as print-ready PDFs; and browse QR categories
+- ✅ **QR Design**: Customize QR code visuals — patterns, eye shapes, frames, gradients, and error correction
+- ✅ **Folders**: Create, list, update, and delete folders, and move or unassign QR codes between them
+- ✅ **Forms & Lead Capture**: List, retrieve, update, and delete lead-capture forms and lead lists, and attach or detach either from a QR code
+- ✅ **Analytics**: Pull account-level usage stats and per-QR performance metrics, and export analytics reports or raw scan logs
+- ✅ **Account Administration**: List users and roles, invite or remove users, and update user role assignments
+- ✅ **Documentation Bridge**: Query Scanova's docs via a live bridge to the Scanova docs MCP server
 
 ## Prerequisites
 
@@ -74,17 +75,82 @@ Add the following configuration to your IDE's MCP settings:
 
 ## Tools
 
+### QR Code Management
 
-| Tool                 | Description                | Example Phrases                                         |
-|----------------------|---------------------------|---------------------------------------------------------|
-| `create_qr_code`     | Create a new QR code      | "create qr", "make qr code", "generate qr"              |
-| `list_qr_codes`      | List existing QR codes    | "list qr codes", "show qr codes", "recent qr codes"     |
-| `update_qr_code`     | Update existing QR code   | "update qr", "modify qr code", "edit qr code"           |
-| `retrieve_qr_code`   | Get QR code details       | "get qr details", "qr code info"                        |
-| `download_qr_code`   | Download QR code image    | "download qr", "get qr image"                           |
-| `activate_qr_code`   | Activate a QR code        | "activate qr", "enable qr code"                         |
-| `deactivate_qr_code` | Deactivate a QR code      | "deactivate qr", "disable qr code"                      |
+| Tool                          | Description                                        |
+|-------------------------------|-----------------------------------------------------|
+| `create_qr_code`              | Create a new QR code                                 |
+| `list_qr_codes`               | List existing QR codes (paginated/searchable)        |
+| `update_qr_code`               | Update an existing QR code                          |
+| `retrieve_qr_code`            | Get details of a specific QR code                    |
+| `download_qr_code`            | Download a QR code image (PNG/JPG/PDF/SVG/EPS)       |
+| `download_qr_printable`       | Generate a print-optimized PDF of a QR code          |
+| `activate_qr_code`            | Activate a QR code                                   |
+| `deactivate_qr_code`          | Deactivate a QR code                                 |
+| `delete_qr_code`              | Permanently delete a QR code                         |
+| `get_qr_categories`           | List QR categories (URL, vCard, WiFi, etc.)          |
+| `attach_form_to_qr`           | Attach a lead-capture form to a QR code              |
+| `detach_form_from_qr`         | Remove a form from a QR code                         |
+| `attach_lead_list_to_qr`      | Attach a lead list to a QR code                      |
+| `detach_lead_list_from_qr`    | Remove a lead list from a QR code                    |
 
+### QR Code Design
+
+| Tool                     | Description                                                    |
+|--------------------------|------------------------------------------------------------------|
+| `get_qr_design_options`  | List available design options (patterns, eye shapes, frames, gradients, error correction) |
+| `set_qr_design`          | Apply a visual design to an existing QR code                    |
+
+### Folder Management
+
+| Tool                              | Description                                  |
+|------------------------------------|-----------------------------------------------|
+| `create_folder`                   | Create a new folder                           |
+| `list_folders`                    | List folders                                  |
+| `update_folder`                   | Update an existing folder                     |
+| `delete_folder`                   | Delete a folder                               |
+| `move_qr_codes_to_folder`         | Move QR codes into a folder                   |
+| `unassign_qr_codes_from_folder`   | Remove QR codes from a folder                 |
+
+### Forms & Lead Lists
+
+| Tool                | Description                        |
+|---------------------|-------------------------------------|
+| `list_forms`        | List lead-capture forms             |
+| `retrieve_form`     | Get details of a specific form      |
+| `update_form`       | Update an existing form             |
+| `delete_form`       | Delete a form                       |
+| `list_lead_lists`   | List lead lists                     |
+| `retrieve_lead_list`| Get details of a specific lead list |
+| `update_lead_list`  | Update an existing lead list        |
+| `delete_lead_list`  | Delete a lead list                  |
+
+### Analytics
+
+| Tool                 | Description                                              |
+|----------------------|------------------------------------------------------------|
+| `get_account_stats`  | Get account-level usage statistics                          |
+| `get_qr_analytics`   | Get QR performance metrics by device, geography, and date   |
+| `export_analytics`   | Export an analytics report (XLSX/PDF)                       |
+| `export_raw_scans`   | Export row-level scan logs (CSV/XLSX)                       |
+
+### Account Administration
+
+| Tool                | Description                              |
+|---------------------|--------------------------------------------|
+| `list_users`        | List account users                          |
+| `get_user`          | Get details of a specific user              |
+| `add_user`          | Invite a new user by email                  |
+| `remove_user`       | Remove a user from the account              |
+| `list_user_roles`   | List available user roles                   |
+| `update_user_role`  | Update a user's role assignment             |
+
+### Documentation
+
+| Tool               | Description                                                |
+|--------------------|---------------------------------------------------------------|
+| `probe_docs_mcp`   | Check connectivity to the Scanova docs MCP server and list its tools |
+| `query_docs`       | Query Scanova documentation via the docs MCP bridge            |
 
 ## Usage
 
