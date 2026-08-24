@@ -599,7 +599,7 @@ All v1 mandatory/recommended items are preserved below, integrated with new cove
 | External fonts/CDN scripts | **Recommended against** *(carried)* — self-host |
 | CSRF | **Mandatory** *(carried)* — header-based bearer auth remains inherently CSRF-resistant; don't regress to cookies for the UI path |
 | Clickjacking (`frame-ancestors`) | **Mandatory** *(carried)* — restrict to known MCP client hosts |
-| CORS scoping (currently `allow_origins=["*"]`) | **Recommended** *(carried, still unresolved — flagged again as it hasn't been fixed since v1)* |
+| CORS (`allow_origins=["*"]`) | **Intentional** — this server accepts connections from any compliant MCP/AI client, so a fixed origin allowlist isn't applicable; auth is bearer-token-based (not cookies), which keeps this CSRF-resistant regardless of CORS breadth |
 | Image/logo URL loading (`logo_url` in `set_qr_design`) | **Recommended** *(carried)* — validate/proxy to avoid SSRF-via-preview |
 | **Supply-chain security** *(new)* | **Recommended, becomes Mandatory once Phase 4 introduces npm deps** — any Preact/Vite `package.json` needs the same rigor already implicitly given to `uv.lock`/`pyproject.toml` on the Python side |
 | **Dependency pinning / lockfiles** *(new)* | **Mandatory once a `package.json` exists** — commit `package-lock.json`/`pnpm-lock.yaml`, mirror the discipline `uv.lock` already provides for Python |
@@ -620,7 +620,6 @@ All v1 mandatory/recommended items are preserved below, integrated with new cove
 - [ ] Sandbox attributes reviewed on the actual served iframe (not just documented intent)
 - [ ] CSP header present and tested for the one Phase-1 resource
 - [ ] No API key/token string present anywhere in the built HTML/JS (grep the built artifact in CI)
-- [ ] CORS scoped away from `*` for the `/mcp` origin once UI ships
 - [ ] `logo_url` validated/proxied
 - [ ] `frame-ancestors` restricted to the confirmed target client's embedding host
 

@@ -19,11 +19,11 @@ OPENAI_APPS_CHALLENGE = os.getenv("OPENAI_APPS_CHALLENGE")
 # Per-tool enablement is separate — see mcp_http/ui_response.py:UI_ENABLED_TOOLS.
 UI_ELEMENTS_ENABLED = os.getenv("UI_ELEMENTS_ENABLED", "true").strip().lower() in ("1", "true", "yes")
 
-# CORS allowlist for the /mcp endpoint. Comma-separated origins, e.g.
-# "https://chatgpt.com,https://claude.ai". Defaults to "*" (today's
-# behavior, preserved for backward compatibility) — set this env var to
-# scope it down once the UI-capable client origins are known. See
-# docs/mcp-ui-architecture.md Part 15 (CORS scoping).
+# CORS allowlist for the /mcp endpoint. Defaults to "*" intentionally —
+# this server accepts connections from any compliant MCP/AI client, so a
+# fixed origin allowlist isn't applicable. Override with a comma-separated
+# list (e.g. "https://chatgpt.com,https://claude.ai") only if that ever
+# changes.
 _allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "*").strip()
 ALLOWED_ORIGINS = (
     ["*"] if _allowed_origins_raw == "*"
