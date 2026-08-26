@@ -9,7 +9,7 @@ CREATE_QR_PARAMS_SCHEMA = {
             "description": "Human-readable name for the QR code",
         },
         "category": {
-            "description": "QR code category ID (e.g. 1=Website URL, 11=Google Map, 13=Document, 15=Social Media). Integer or string.",
+            "description": "QR code category ID (e.g. 1=Website URL, 7=vCard, 11=Google Map, 23=App Deep Link). Integer or string. See the info field's description for the full list of supported categories.",
             "oneOf": [{"type": "integer"}, {"type": "string"}],
         },
         "qr_type": {
@@ -22,30 +22,43 @@ CREATE_QR_PARAMS_SCHEMA = {
             "description": (
                 "JSON string of QR content. The structure depends on the category.\n"
                 "\n"
-                "Simple object format (categories 1-7, 10, 11):\n"
+                "Simple object format (categories 1, 2, 3, 4, 5, 6, 10, 11):\n"
                 '  Website URL (cat 1):   {"type":"url","data":{"url":"https://example.com"}}\n'
-                '  Text (cat 2):          {"type":"text","data":{"text":"Hello World"}}\n'
-                '  Email (cat 3):         {"type":"email","data":{"email":"a@b.com","subject":"Hi","body":"Hello"}}\n'
-                '  Phone (cat 4):         {"type":"phoneNumber","data":{"phone":"7011472701"}}\n'
-                '  SMS (cat 5):           {"type":"sms","data":{"phone":"7011472701","message":"Hello"}}\n'
+                '  Email (cat 2):         {"type":"email","data":{"to":"a@b.com","cc":"c@b.com","bcc":"d@b.com","subject":"Hi","body":"Hello"}}\n'
+                '                         to is required; cc, bcc, subject, body are optional.\n'
+                '  Text (cat 3):          {"type":"text","data":{"text":"Hello World"}}\n'
+                '  Phone (cat 4):         {"type":"phoneNumber","data":{"number":"7011472701"}}\n'
+                '  SMS (cat 5):           {"type":"sms","data":{"contactNumber":"7011472701","message":"Hello"}}\n'
                 '  WiFi (cat 6):          {"type":"wifi","data":{"ssid":"MyNet","password":"secret","authentication":"WPA"}}\n'
-                '                         authentication values: WPA | WEP | nopass\n'
-                '  vCard (cat 7):         {"type":"vcard","data":{"first_name":"John","last_name":"Doe","mobile":"7011472701","job_title":"Engineer"}}\n'
+                '                         authentication values: WPA | WPA2 | WEP | none\n'
                 '  App Store (cat 10):    {"type":"appStore","data":[{"type":"playStore","url":"https://play.google.com/store/apps/details?id=com.example"},{"type":"appleStore","url":"https://apps.apple.com/app/id123456789"}]}\n'
                 '  Google Map (cat 11):   {"type":"map","data":{"provider":"google","latitude":28.6139,"longitude":77.2090,"placeId":"ChIJL_P_CXMEDTkRs_FGKBLBFBE","placeName":"New Delhi, India"}}\n'
                 "\n"
-                "Page-builder format — info must be a JSON ARRAY ([...]) for these categories:\n"
-                '  Custom Page (cat 9):   [{"type":"page_layout","data":{"backgroundColor":"#ffffff"}},{"type":"description_box","data":{"text":"Hello World"}},{"type":"button","data":{"text":"Visit","url":"https://example.com"}}]\n'
-                '  Document (cat 13):     [{"type":"page_layout","data":{"templateId":"default_1"}},{"type":"main_page","data":{"pageTitle":"My Documents","files":[{"url":"https://example.com/doc.pdf","name":"My Document","fileName":"doc","size":78482}],"allowFileDownload":true}}]\n'
-                '                         Note: files must be publicly accessible URLs (PDF, DOCX, etc.). File upload is not supported via MCP.\n'
-                '  Wedding (cat 14):      [{"type":"page_layout","data":{"templateName":"classic","backgroundColor":"#ffffff"}},{"type":"couple_name","data":{"first_name":"Alice","second_name":"Bob"}},{"type":"description_box","data":{"text":"Join us for our wedding"}}]\n'
-                '  Social Media (cat 15): [{"type":"page_layout","data":{"templateName":"linear","backgroundColor":"#ffffff"}},{"type":"social_media_profiles","data":{"profiles":[{"platform":"instagram","url":"https://instagram.com/handle"}]}}]\n'
-                '  Audio (cat 16):        [{"type":"page_layout","data":{"templateId":"default_1"}},{"type":"main_page","data":{"pageTitle":"My Playlist","files":[{"url":"https://example.com/audio.mp3","name":"Track Name","mime":"audio/mpeg"}]}}]\n'
-                '                         Note: files must be publicly accessible audio URLs (mp3, wav, aac, m4a). File upload is not supported via MCP.\n'
-                '  Product (cat 18):      [{"type":"page_layout","data":{"backgroundColor":"#ffffff"}},{"type":"description_box","data":{"text":"Product description"}},{"type":"button","data":{"text":"Buy Now","url":"https://example.com/buy"}}]\n'
-                '  Restaurant (cat 25):   [{"type":"page_layout","data":{"templateName":"default"}},{"type":"brand_info","data":{"name":"Cafe Crush","description":"Authentic North Indian cuisine"}},{"type":"footer_info","data":{"phone":"9876543210","address":"Sector 62, Noida"}}]\n'
-                "  For other categories, call query_docs with mode='filesystem' and "
-                "query='cat /api-reference/references/category-list.mdx' to look up the correct info schema."
+                "IMPORTANT: categories 2 and 3 were swapped from an earlier version of this "
+                "description — category 2 is Email, category 3 is Text. Also note the field "
+                "names above: Email uses data.to (NOT data.email), Phone uses data.number (NOT "
+                "data.phone/data.contactNumber), SMS uses data.contactNumber (NOT data.phone).\n"
+                "\n"
+                "vCard (cat 7) — info is a JSON ARRAY of page-builder sections, NOT a flat "
+                "\"vcard\" object:\n"
+                '  [{"type":"profile_info","data":{"name":"John Doe","title":"Engineer","company":"Acme Inc"}},'
+                '{"type":"contact_details","data":{"emails":[{"email":"john@example.com"}],"phoneNumbers":[{"phoneNumber":"7011472701"}]}}]\n'
+                "\n"
+                "App Deep Link (cat 23) — info IS the JSON ARRAY of typed sections directly (NO "
+                "outer {type,data} wrapper). intentUri (at least one of android/ios) and fallback "
+                "are BOTH required; appStore is always optional:\n"
+                '  [{"type":"intentUri","data":[{"type":"android","uri":"myapp://open/screen/123"},{"type":"ios","uri":"myapp://open/screen/123"}]},'
+                '{"type":"appStore","data":[{"type":"playStore","url":"https://play.google.com/store/apps/details?id=com.example"},{"type":"appleStore","url":"https://apps.apple.com/app/id123456789"}]},'
+                '{"type":"fallback","data":{"url":"https://example.com/download"}}]\n'
+                "\n"
+                "Categories 9, 13, 14, 15, 16, 17, 18, 19, 20, 24, 26, 27, 28, and 31 (Custom Page, "
+                "Document, Wedding, Social Media, Audio, Coupon, Product, Image, Event, Business "
+                "Card, Feedback, Real Estate, Link Page, GS1) plus Restaurant (25, 44) are BLOCKED "
+                "by this server — calling create_qr_code with one of these category IDs returns a "
+                "message telling the user to create it via https://app.scanova.io instead. Don't "
+                "attempt to construct info for these; tell the user to use the Scanova app.\n"
+                "For any other category not listed above, call get_qr_category_fields to look up "
+                "the correct info schema before attempting create_qr_code."
             ),
         },
         "pattern_info": {
@@ -121,7 +134,7 @@ DOWNLOAD_QR_PARAMS_SCHEMA = {
     "properties": {
         "file": {
             "type": "string",
-            "enum": ["png", "jpg", "pdf", "svg", "eps"],
+            "enum": ["png", "jpg", "pdf"],
             "default": "png",
             "description": "Output image format",
         },
@@ -144,6 +157,58 @@ DOWNLOAD_QR_PARAMS_SCHEMA = {
 QRID_SCHEMA = {
     "type": "string",
     "description": "Scanova QR code ID (e.g. Qc22580d20dd14c44)",
+}
+
+# ---------------------------------------------------------------------------
+# QR Code Creation & Validation
+# ---------------------------------------------------------------------------
+
+GET_QR_CATEGORY_FIELDS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "category": {
+            "description": "QR code category ID to look up (e.g. 1=Website URL, 24=Business Card). Omit to list all categories.",
+            "oneOf": [{"type": "integer"}, {"type": "string"}],
+        },
+    },
+}
+
+OPEN_QR_CODE_CREATION_FORM_SCHEMA = {
+    "type": "object",
+    "description": (
+        "Show an interactive QR code creation form. Use this when the user wants "
+        "to create a QR code but hasn't provided enough information yet (missing "
+        "or ambiguous name/category/content) — do not guess or invent placeholder "
+        "values in that case."
+    ),
+    "properties": {
+        "name": {"type": "string", "description": "Pre-fill the QR name, if already known"},
+        "category": {
+            "description": "Pre-fill the category ID, if already known",
+            "oneOf": [{"type": "integer"}, {"type": "string"}],
+        },
+        "qr_type": {
+            "type": "string",
+            "enum": ["dy", "st"],
+            "description": "Pre-fill dynamic/static, if already known",
+        },
+    },
+}
+
+VALIDATE_QR_INFO_SCHEMA = {
+    "type": "object",
+    "description": "Validate a category + info payload before create_qr_code/update_qr_code.",
+    "properties": {
+        "category": {
+            "description": "QR code category ID (see get_qr_categories / get_qr_category_fields).",
+            "oneOf": [{"type": "integer"}, {"type": "string"}],
+        },
+        "info": {
+            "type": "string",
+            "description": "JSON string of QR content, matching the shape for the given category (see get_qr_category_fields).",
+        },
+    },
+    "required": ["category", "info"],
 }
 
 # ---------------------------------------------------------------------------
@@ -339,6 +404,21 @@ LIST_FORMS_SCHEMA = {
     },
 }
 
+CREATE_FORM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string", "description": "Form name"},
+        "data": {
+            "type": "object",
+            "description": "The form's field schema, e.g. {\"fields\": [{\"type\": \"text\", \"label\": \"Full name\", \"required\": true}]}",
+        },
+        "qr_id": {"type": "string", "description": "A dynamic QR code's qrid to attach immediately on creation"},
+        "theme_id": {"type": "integer", "description": "An active theme's ID to style the form's public page"},
+        "theme_overrides": {"type": "object", "description": "Partial theme token overrides layered on theme_id"},
+    },
+    "required": ["name", "data"],
+}
+
 UPDATE_FORM_SCHEMA = {
     "type": "object",
     "properties": {
@@ -379,6 +459,25 @@ UPDATE_LEAD_LIST_SCHEMA = {
 }
 
 # ---------------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------------
+
+LIST_TAGS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string", "description": "Case-insensitive prefix filter"},
+        "page": {"type": "integer", "description": "Page number"},
+        "page_size": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Account & Billing
+# ---------------------------------------------------------------------------
+
+GET_CURRENT_PLAN_SCHEMA = {"type": "object", "properties": {}}
+
+# ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
 
@@ -393,13 +492,27 @@ ADD_USER_SCHEMA = {
     "required": ["email", "role"],
 }
 
+CREATE_CUSTOM_ROLE_SCHEMA = {
+    "type": "object",
+    "description": "Create a custom role (requires a dedicated plan quota — a 403 means the plan doesn't include it).",
+    "properties": {
+        "name": {"type": "string", "description": "Role name; must be unique among this account's roles"},
+        "permissions": {
+            "type": "array",
+            "items": {"type": "integer"},
+            "description": "Permission IDs to grant, from list_user_roles' permissions[].id values",
+        },
+    },
+    "required": ["name", "permissions"],
+}
+
 UPDATE_USER_ROLE_SCHEMA = {
     "type": "object",
     "properties": {
         "user_id": USER_ID_SCHEMA,
-        "role": {"type": "string", "description": "New role to assign"},
+        "access_level": {"type": "string", "description": "New access level to assign"},
     },
-    "required": ["user_id", "role"],
+    "required": ["user_id", "access_level"],
 }
 
 # ---------------------------------------------------------------------------
@@ -657,9 +770,13 @@ LIST_QR_CODES_INPUT_SCHEMA = {
         "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100,
+            "maximum": 20,
             "default": 10,
-            "description": "Number of results per page",
+            "description": (
+                "Number of results per page, capped at 20. To fetch more "
+                "than 20 QR codes, make additional calls incrementing "
+                "'page' rather than raising this value."
+            ),
         },
         "search": {
             "type": "string",

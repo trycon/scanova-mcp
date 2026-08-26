@@ -1,0 +1,229 @@
+<!--
+  PROTOTYPE — DO NOT SERVE. Not registered in ui_resources.py.
+
+  Snapshot of the list_qr_codes widget taken 2026-08-21, before the shared
+  theme/bridge redesign. This is the version that was confirmed working end-to-end in both ChatGPT
+  and Claude — full MCP Apps handshake (ui/initialize/appInfo), structuredContent
+  unwrapping on both bridge conventions, null-envelope guard, and
+  ui/notifications/size-changed reporting all verified live. Keep this as a
+  known-good reference to diff against if the redesigned widgets misbehave.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>QR Codes</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f23; --muted: #6b7280; --border: #e2e5e9;
+    --accent: #2d6cdf; --danger: #c0392b; --success: #1e824c; --radius: 8px; --row-hover: #f4f6f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15181d; --fg: #e7e9ec; --muted: #9aa3ad; --border: #2b2f36; --accent: #6ea2ff; --row-hover: #1e2229; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .toolbar input { flex: 1; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); font-weight: 600; }
+  tr:hover td { background: var(--row-hover); }
+  .badge { font-size: 11px; padding: 2px 6px; border-radius: 10px; }
+  .badge.active { background: rgba(30,130,76,0.15); color: var(--success); }
+  .badge.inactive { background: rgba(192,57,43,0.15); color: var(--danger); }
+  .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  button { padding: 6px 12px; border: none; border-radius: var(--radius); background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .status { margin-top: 8px; font-size: 12px; color: var(--muted); min-height: 16px; }
+  .error { color: var(--danger); }
+  .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <input type="text" id="search" placeholder="Search by name…" />
+  <button id="search-btn">Search</button>
+</div>
+<table>
+  <thead><tr><th>Name</th><th>ID</th><th>Status</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div class="pager">
+  <button id="prev">◀ Prev</button>
+  <span id="count" class="status"></span>
+  <button id="next">Next ▶</button>
+</div>
+<div class="status" id="status"></div>
+
+<script>
+/* Same dual-convention bridge shim as the other UI resources — see
+   docs/mcp-ui-architecture.md Part 9 (Bridge Contract). */
+const Bridge = (function () {
+  if (window.openai && typeof window.openai.callTool === "function") {
+    return {
+      convention: "openai",
+      ready: Promise.resolve(),
+      getInitialData: () => window.openai.toolOutput || null,
+      // window.openai.callTool resolves to {content, structuredContent, _meta} —
+      // unwrap structuredContent so callers get the same envelope shape as the
+      // postMessage branch's callTool below (and as toolOutput already is).
+      callTool: (name, args) =>
+        window.openai.callTool(name, args).then((result) => {
+          return (result && result.structuredContent) || null;
+        }),
+      onToolResult: () => {},
+    };
+  }
+
+  // Standard MCP Apps postMessage bridge (spec 2026-01-26,
+  // https://apps.extensions.modelcontextprotocol.io). The host will not
+  // render or send anything to this iframe until it receives our
+  // ui/notifications/initialized notification, so that handshake must
+  // complete before anything else happens.
+  let nextId = 0;
+  const pending = new Map();
+  const toolResultHandlers = [];
+
+  function request(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = ++nextId;
+      pending.set(id, { resolve, reject });
+      window.parent.postMessage({ jsonrpc: "2.0", id, method, params: params || {} }, "*");
+    });
+  }
+
+  function notify(method, params) {
+    window.parent.postMessage({ jsonrpc: "2.0", method, params: params || {} }, "*");
+  }
+
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== "object" || msg.jsonrpc !== "2.0") return;
+
+    if (msg.id !== undefined && pending.has(msg.id)) {
+      const { resolve, reject } = pending.get(msg.id);
+      pending.delete(msg.id);
+      if (msg.error) reject(msg.error); else resolve(msg.result);
+      return;
+    }
+
+    if (msg.method === "ui/notifications/tool-result") {
+      const data = (msg.params && msg.params.structuredContent) || null;
+      toolResultHandlers.forEach((cb) => cb(data));
+    }
+  });
+
+  const ready = request("ui/initialize", {
+    capabilities: {},
+    appInfo: { name: "scanova-mcp-ui", version: "1.0.0" },
+    protocolVersion: "2026-01-26",
+    appCapabilities: { experimental: {}, tools: { listChanged: false }, availableDisplayModes: ["inline"] },
+  }).then(() => {
+    notify("ui/notifications/initialized", {});
+  });
+
+  // Tell the host how big this widget actually is — without this, hosts
+  // fall back to a small default iframe size and the content has to be
+  // scrolled. Report once ready, then on every subsequent content resize.
+  function reportSize() {
+    notify("ui/notifications/size-changed", {
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight,
+    });
+  }
+  ready.then(reportSize);
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(reportSize).observe(document.documentElement);
+  }
+
+  return {
+    convention: "postMessage",
+    ready,
+    getInitialData: () => null,
+    callTool: (name, args) =>
+      request("tools/call", { name, arguments: args }).then(
+        (result) => (result && result.structuredContent) || null
+      ),
+    onToolResult: (cb) => toolResultHandlers.push(cb),
+  };
+})();
+
+const rowsEl = document.getElementById("rows");
+const countEl = document.getElementById("count");
+const statusEl = document.getElementById("status");
+const prevBtn = document.getElementById("prev");
+const nextBtn = document.getElementById("next");
+
+let page = 1;
+const limit = 10;
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+// Binds directly to normalizer.py's existing pagination shape
+// ({count, next, previous}) — no second pagination contract invented.
+function render(envelope) {
+  if (!envelope || envelope.ok === false) {
+    setStatus((envelope && envelope.error && envelope.error.message) || "Failed to load", "error");
+    return;
+  }
+  const results = (envelope.data && envelope.data.results) || [];
+  const pagination = envelope.pagination || {};
+  rowsEl.innerHTML = "";
+  if (!results.length) {
+    rowsEl.innerHTML = '<tr><td colspan="3" class="empty">No QR codes found</td></tr>';
+  }
+  for (const item of results) {
+    const tr = document.createElement("tr");
+    const active = item.is_active !== false;
+    tr.innerHTML =
+      "<td>" + (item.name || "—") + "</td>" +
+      "<td>" + (item.qrid || "") + "</td>" +
+      '<td><span class="badge ' + (active ? "active" : "inactive") + '">' + (active ? "Active" : "Inactive") + "</span></td>";
+    rowsEl.appendChild(tr);
+  }
+  countEl.textContent = pagination.count != null ? pagination.count + " total" : "";
+  prevBtn.disabled = !pagination.previous;
+  nextBtn.disabled = !pagination.next;
+  setStatus("");
+}
+
+function load() {
+  setStatus("Loading…");
+  const search = document.getElementById("search").value.trim();
+  const args = { page, limit, search: search || undefined };
+
+  Bridge.callTool("list_qr_codes", args)
+    .then(render)
+    .catch((err) => {
+      console.error("[MCP DEBUG] Bridge.callTool threw/rejected:", err);
+      setStatus("Could not reach the host", "error");
+    });
+}
+
+document.getElementById("search-btn").addEventListener("click", () => { page = 1; load(); });
+prevBtn.addEventListener("click", () => { if (page > 1) { page--; load(); } });
+nextBtn.addEventListener("click", () => { page++; load(); });
+
+// Hydration: wait for the bridge handshake, then use the host's initial
+// result if it already has one; a later ui/notifications/tool-result push
+// re-renders too. Otherwise fetch page 1 ourselves.
+Bridge.ready.then(() => {
+  Bridge.onToolResult(render);
+  const initial = Bridge.getInitialData();
+
+  if (initial) {
+    render(initial);
+  } else {
+    load();
+  }
+});
+</script>
+</body>
+</html>

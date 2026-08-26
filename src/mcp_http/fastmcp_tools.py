@@ -290,53 +290,9 @@ def register_fastmcp_tools(server: FastMCP) -> None:
             exclude_bot_scan=exclude_bot_scan,
         )
 
-    @server.tool(
-        "export_analytics",
-        description="Export QR code analytics as an Excel or PDF report",
-        annotations=READ_ONLY_TOOL_ANNOTATIONS,
-    )
-    def export_analytics_tool(
-        filter_by: str = None,
-        q: list = None,
-        from_date: str = None,
-        to_date: str = None,
-        file_format: str = "xlsx",
-        exclude_bot_scan: bool = False,
-    ):
-        return _run(
-            "export_analytics",
-            filter_by=filter_by,
-            q=q,
-            from_date=from_date,
-            to_date=to_date,
-            file_format=file_format,
-            exclude_bot_scan=exclude_bot_scan,
-        )
-
-    @server.tool(
-        "export_raw_scans",
-        description="Export row-level scan logs as CSV or Excel",
-        annotations=READ_ONLY_TOOL_ANNOTATIONS,
-    )
-    def export_raw_scans_tool(
-        filter_by: str = None,
-        q: list = None,
-        from_date: str = None,
-        to_date: str = None,
-        file_format: str = "csv",
-        scan_type: str = "raw",
-        exclude_bot_scan: bool = False,
-    ):
-        return _run(
-            "export_raw_scans",
-            filter_by=filter_by,
-            q=q,
-            from_date=from_date,
-            to_date=to_date,
-            file_format=file_format,
-            scan_type=scan_type,
-            exclude_bot_scan=exclude_bot_scan,
-        )
+    # export_analytics / export_raw_scans removed for now (2026-08-24) — not
+    # registered as tools, but the underlying analytics.py functions are
+    # left in place for an easy re-enable later.
 
     # ------------------------------------------------------------------ #
     # Folder Management
@@ -529,8 +485,8 @@ def register_fastmcp_tools(server: FastMCP) -> None:
         description="Change the role of an existing user",
         annotations=WRITE_TOOL_ANNOTATIONS,
     )
-    def update_user_role_tool(user_id: str = None, role: str = None):
-        return _run("update_user_role", user_id=user_id, role=role)
+    def update_user_role_tool(user_id: str = None, access_level: str = None):
+        return _run("update_user_role", user_id=user_id, access_level=access_level)
 
     # ------------------------------------------------------------------ #
     # Inject output schemas into registered tool objects.

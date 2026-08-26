@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>QR Design Options</title>
+<style>
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 20px 0 10px; }
+  h2:first-child { margin-top: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+  .opt {
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 8px;
+    text-align: center; background: var(--bg);
+  }
+  .opt img { width: 56px; height: 56px; object-fit: contain; margin-bottom: 4px; }
+  .opt-name { font-size: 12px; font-weight: 600; }
+  .opt-desc { font-size: 10px; color: var(--muted); margin: 2px 0 6px; line-height: 1.3; }
+  .opt code {
+    display: block; font-size: 10px; background: var(--row-hover); border-radius: 6px;
+    padding: 3px 5px; word-break: break-word;
+  }
+  .list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .list code {
+    font-size: 11px; background: var(--row-hover); border-radius: 999px; padding: 4px 10px;
+  }
+  .note { font-size: 11px; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h2>Data patterns</h2>
+<div class="grid">
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQAQMAAAC032DuAAAABlBMVEUAAAD///+l2Z/dAAAAQklEQVR42rXR0Q0AIAhDwe6/dBWwTPBMSDh/qAHZqpK3GOq27jBndKI4dko9YL6Py/rACUC5NxRLZxs0dzzLbATmAW/tpmjL64AuAAAAAElFTkSuQmCC" alt="Default" />
+    <div class="opt-name">Default</div>
+    <div class="opt-desc">Classic square modules</div>
+    <code>pattern: Default</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,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" alt="Round" />
+    <div class="opt-name">Round</div>
+    <div class="opt-desc">Circular modules</div>
+    <code>pattern: Round</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAAFDUlEQVR42s1YMWgjRxQdyVcoENgxJGBIYMdwkCsCWheBgxzsXmG4zqsqBym8Jk1SaY80hhSSy1SWm+OSRusi4OMK6YrAFQGt4OByl8IrCCEHAY2KgFN5BIHYEKLMSrs7X85fZteIJFOIz/D1Znfmv3nvb3WGj/M2mQ8azGZjZxFbg9lswBaxd57zx8qMoMN9mkZdd4snIT3ld9Np6xT/41obnY4eZOGQPk7DCxG+TuMzZqH/vIGvE6lQvFIxB/OclAGE2T+pcIivCUeVXHeIVQOSUoAUxDUV1sG0UwoQnuA9sE4dXxOMvDq0RmnU8jaz2QHfS0OD01J7GKTPsuOznpFgtByvmUyb/dwn5KO4AJz61YTO8JyQm9sfyXDS68vfbfuO/H3+7QtC1u2GGVfOSJYXY3acHo7ksVt1VmkdLc6fdt2lyt5L6szt0v5ekuK3iH+0mGZdRzTC5Hh6NGokletXFMaYldlDOvYyuju9jO5kDRwbKITwS8DlIaDeJOO18VBNv/UEo16Uw6tnKpyC+dcg5Uf0lEUOry70a56tmnoXqwB8E2cqAISHDON3VGgbKr6pBbRwLhvbYB0Hvxy2MUDTg4A7ijGemWG3fXXxeK0sbn1sK00ZRL8t3qa/AXfoXm1RfcYjr+Ym1VcPLOaE03m8e1JzSHQ5T9lvE/dsQQQzqMyCkWTQjTs78hXEcRjXi7M730Iuq99KdicS6h1lOp1viTj64Ve5xR80aZouUyp2ygOvy++mBOq5BY45bCTVSntgPwGXB+2hIirVAyq6szF6yn3FWRHp8fgIVVcA+By+TgFAnKkA8M/rUy/892W05LBQQCdHRoleunO4rETXKABomSodPEs1Q7G9TnaX+KzAe3aU5kJ/+HONiEtiWv4jwu4LKllbvxV4RTbulnu2EaffPoGbVRWTiaT7ZDKRtcSCUJraKLxiW8SDzYocm7Ga8sZ6HG8dxPPTmAqjaVyR7a14er3BK1RoPC7gGB2LTFKdQSdzuYe+ctBrFzqPS4KvMum4OMm0jjufXqbxyw/3CabLOVdMR5G29v2lmn+pNOqvEVY2XE/a0RSVzhwul7TBKwFcOZdNgsso03KZ4GaaAUv8Lkh5GwV09YCeyjF8JZ32F8oArDXT02/dzwFkWb/T3HfCxM8ZHcd6lpy5GbCNMKknuzILQymAFvXm+xDGovUPd8wDKTKMOfGzwvSHr375nVjvfUaTFGpZ7lIX0E7ssbTBRWroILlv/BbF24r2gSJqAcDUbksbEeCAVPHgVH/DinXUnkMHO9W2mjkdMGRnVZtRZESrpt7KuVzOEl9bl5lRCtDSXg5E+V3bKfCazSzcZfhnFiclrR0UYcrtxAaT3U4trwH/5jtx/sbG+59cweNP58e4c7Xav35x9odM/zyvo8/6VdZb+muml/7h0jKpg15Kh4DeMeZxSbSVhUve2xli1IeHcqwWhw62j9kZmaMcdIgzhecQFYBPS1lirv9sFP3vLbGRKztlLDHTO+Uc6pnaVhdS3DFQB11FPW4T/tNX7S0sG6JI6+PXF3EHC+2uH3aWz7Y5fxhjN1qipN9b+Ih6t13gYxoJj0QohZa1lm8ycbTQ5aaLpEvpbuYBZvylA7ifYjOt0GYHlVSaA8i3BKrRiu5kAKqCb+rqkAu8MQ3xhjXQFnaYw7eJVmmr1/4czP/br8R5badeaata17pEQ/O6gJYiqg3nXdxBg2bzb93o2LP+ibuHAAAAAElFTkSuQmCC" alt="RoundedCorners" />
+    <div class="opt-name">RoundedCorners</div>
+    <div class="opt-desc">Squares with rounded corners</div>
+    <code>pattern: RoundedCorners</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAAFfUlEQVR42q2Yz4/cNBTHHU+pChKawKlc2qmKOCElvcCp6uQfWO0NOMUjgVSBVJZ/oNr9C1iQOKJ4Lmg5sdt/YLJUqgSXdW+AaBVxKheagoRoq2WwHf94z3HILCKHWY/3O5/Y8fv6PYeu0XUyJaTSrcc5URfTvalqTk9Uu9Ld+eP1wEUJuvJ6WjHVaAuhO/iCEFG0qvlEdanvxHVFrmQddLQp5Kkxfux+nK7Ewt16lW4GJAGPkPPPXPOlP8Fk4kTKx3jE8wjgDcxaJGQ17/XOj8km1426P5TZpNzpK/ODpxvwpgcXe30XLsafoZg/GefVefQZRsUyelw7+8L3l+UYrwMyPkzM6g8rx+O8xLx24VdGfKI+zynecklYj9jNOqtT+b+F4cnAJkvIK4Sw0SNXva10HDIlqUIi+fpd9ZB/uKza738pP67+rPtffyA/Dt5x4WXiUUcRq+SUNY8swlmLm+rzr201Ja545IEeJ1M8clO4cO3isfuUxkzKpSHgMbqwlQPg1m9yAGxpXZi78JcSJ2eJZ0AisEH+wUeum63t7Ul655azU/75lpMDICAObyb+mpxG2xMgOZrlm/PIOt5OUPA36Vm8TMacMq1NSB1m/wvQmymtIfEF33wRdL8Sb9NpwGtDYvm9l9yrvMUfel+XD72cWtManrjCMbHkOZCwylk8db4uuZdXyVrc+B3w5PqaLDW/b/1rdrNO0kV5ph93F+VaYuQVo2T2mt59Hc+4sLupFnd7j7mlHmPHIzvnVcrZ8XI5FtoWP6qOOwsff55YcrebuSWTRMMThUo3zzoHKrmaW5ILZ1Qfz2bW+7vei8Tvp4fzFIW/9LWW19s4sLe+baO+HriAnQyx7xRCNiciewLiEHCMGNjdERkd+kU9MkC8fbTC/h0aYclHpux2XTyfFmxfbzx/ujmP5LOj2PO5QJ0Ls++Op8O8VoTTZVXAa5vOy5kzpzNthFf4+kkUBSbaivKa0OVc+/ZP8u+bd1Nn2hhPuIVU62tSZ/ccfYWqJJQ0v/rw0WOM82yNp+MFBc0xkiQn5n82X8+3+VC5qAYggNwutJy7lyRpiyvSZjZcfqYrUnj5oQsc9qmXJKM1LixnXyZ/uPalX7zm1d+iXo4ScXk8fiGnRIhn5eGCM+uPMD1rRp2M+Xe7uf9fRzjgX+7TJXkPjHfPV83TPQAsA95uO0wsv/L5urrtquZpfdv5OqNWbnhsrxgkSolLwNJv1voqfVlfZ7UtiS1vGV1rIOkScOdf8dZztb1cd76WOwztBgB4sWIOSPQYzf63L3nk71tu71HpVR98GAG8eDxaiR7jDovJ+b5K1/AkxZZjZ9f+c+jJaUywUQk7IPfHWyDYhDgknxzNu/2K7yH9o0fb/8rb/WxAnjh/oFvaemjwMuVbXw4WBRLHeAERyOOrPM5DRCinMdNGeLhQwFUzkp9Dv+rOrgO8qkfsxojl+BVBe1Umh8nqenR8LCSSu8VpT07xfq+SzemWiM63N2uxddqX00j+CPOIJQVEG81YTmP5CEs8BxG9O5CcRvMbbEMKaENzQjmN50v/Dc/TfcNmBz92wBo/t9Y6ch8vxDeNIbdxOQgbPBRncWxaf2LF1i8jQEQEKRUS4eskSARyuMFWoSA86hpeE+ZrI2/COHREI+BXBCLaE+u1BSbaDGdK4v4iWt7CneL0rMEJ2NwaHG/1FyUPXvcpoucRSAQ8AokwA0t5+P6QLyAPEBvIA8QSZWBZEocvJOs5XnJLbHIcz4bIcYqWJfF67OAFz67QH3A3AyEUB6Ig90TsN0+EIRkFBvsUPPKQCBGZhpLN33LNLg+//TrLlL3fsK9LvvGUERH6FxJhBQ2INH6S9w/cxrMIfI0qcu/r7B+Qaur2AV8EKwAAAABJRU5ErkJggg==" alt="RotatedSquares" />
+    <div class="opt-name">RotatedSquares</div>
+    <div class="opt-desc">Rotated square modules</div>
+    <code>pattern: RotatedSquares</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,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" alt="connectedCircles" />
+    <div class="opt-name">connectedCircles</div>
+    <div class="opt-desc">Connected circular pattern</div>
+    <code>pattern: connectedCircles</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAAAAACreq1xAAADM0lEQVR42sVYwXXjIBAd8fZuOrC2AT91kFa2gyjZeyLvfWOXkFK2hDw3YG0FxhVohQAhhkGAVko4RBoPGsfw9f8fGL+dYBinG5eX/Li7dv0Y/vSDiaZSE6pGyEt+DKW8lupTYPCh78zN4tgUXHkwqMxt5VzyY11w15h/vdnJS36swlYXLG5weJZf8vF6kXOr5n44DvHbBYY4lue6UlMPd0XX1HDsE6/3w69h4stlN8RwbqYT4W8g32+0ig8/Zb64luK73H9+fX9S+PqhY95KKLQGD3Am830953lWQhq+7Ca4eUDPs1R82TE/fwMcJuILIA2PfcF5fPk/dcxr6LnPF51czyneML7MEAiPE9hMn5cFHWCCQPiywHXx+vsCVH4saPEGCF9cfxjEq5Mfd9nWw/gyHwbx6uRnYLOMH7fA4TK8hWK5KYgExk0p7xJf7bjoOh43xeSd+UUnEE0JhK8JLBw+DOCxOBs8aT7r8cXJFRA6/3LZO/yI5n+rTyDx8+f9+lyrn0LXA27yqh7sj+R85uvt0k2CEB9uBpvV+PB/C3p6a/E41dsEqRimFidff/cOHq2MHp08jvX8KbBpvoMA/gJ4nLx6Ib4zcY30mY6Z4b8w3+WRBEvnv6/DYd6rlVEw5gfTlsbKKNZn7Acx/t40bYlRzzkuSOuv8YNh/wjT2CsYxyP2j8KJvV2O4xH7Rzdma+nxlv5wHT0eX70WMP/l9ScWvwaHWI+x/mK+9P2jo9+y8XH1GOuvoPFGKffgD+N8ByTeiHrKH8b5jsabP4w/TOa7tP5ly345NtKsCovzHe5H6HIGv8XtHuA3rM/YLxK0p/xhrD/2/aLbv+B+Od4f1yTeTH/i9cvx/pjGm2hwXC31h1/fL+fiEVuRwPlLaCksX9L8af0hOn/x9BfhrQGaP60/9PuRHcl/Yp4/R39oR+h8BvL8IUTPZ7L9YS7/fb4/zOW/5IKp5zdxfwjI782f32T4w9j5DZ/Ta8Ifxs5vYFavCX8YO7+Z12u2lh5/pj9cpsfm0h/q4kWOnd94m+Kc37BSralcVbXIKO73r318eHjU9cCfDyoPKg77Q3w+6PMhed7zDx6rEnx5VmGEAAAAAElFTkSuQmCC" alt="circularDiagonal" />
+    <div class="opt-name">circularDiagonal</div>
+    <div class="opt-desc">Circular diagonal pattern</div>
+    <code>pattern: circularDiagonal</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQBAMAAAB8P++eAAAAIVBMVEWmpqb////6+vrNzc28vLwzMzOsrKx8fHwAAAA0NDS9vb2qPjPpAAABpklEQVR42pVWsW0DMQwkoF/gfwM1rr9wlSpAhrBr7+AiA2QGD5BFgwiSfDyRAmXgIJg+gM/7E8/yuIgU7PBpNYCk8/tVgMRWA8j2ef8pQGKrAeLEdD5vBap1rQEkPEw+rl8FSGw1gHTC8fGryK1W8W7J7ekRJKF2TFQ6oiRMVDpGiQm1G1qjjtFhMmo3yAM6dq08LWtddnyFVvtalx39aGlZ67KjzSyJan2BiH60tKz1hWHQj5aWtS7mD4amdivjMSR5RNJUNo9IUsWJfmutaXwYXx6tqfajp+PgR6/14EdPx8GPnjyDH6dEaz+yjoMfp8NY+5F1LH6c7UXU8TFbJdg6zfYi6rjN1h3KEyam2V5EHcPD5NledO815Arnjx9t9CrFzWnypbjxS3aLE92cJl/Gh3FzmnwpKl+sU+U1r2Y8VV5zzuCp8prjA0+V1xGiyhfrVHkdGUbli3Wq/z3sQ9axv0J+ddy6m4J9yDp2m7G9WJ4lYrJ8yDouDZMtH7KOJWeMTMmMTmTrMzqR7zGjE/l6MtaJfI8Z68PwPWYUwTlnjDv9//0Pml/B2GrQk90AAAAASUVORK5CYII=" alt="lightCircle" />
+    <div class="opt-name">lightCircle</div>
+    <div class="opt-desc">Light circular pattern</div>
+    <code>pattern: lightCircle</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQBAMAAAB8P++eAAAAElBMVEWzs7P///83NzeGhoYAAAA4ODgIKO5SAAABI0lEQVR42rWV0Q3DIAxEWYEZ2gkqdYGu0P13qYRScnc2rkMByUI4jw8fzrmU76qwirue7xYEHjmKcn+1IPDIUeTBx60FgUeOIl9MFsSPVdafoGhp9ERJDIjyXAdFS6Pn8qorXvDgns+D0I+elj2PbeZJ1PN5EPrR07Lnl1ftfnAurQBZ0wBkqVaArOmGqqtnAAqal4lBxx9VR9OPI3lMP8ag44+qo+nHJVWX6MefBANfpHNkd3TOg4Ev0nl91UPjZOFnQZgr0pdlOH6l3WZBmCvSl7uqViPFvXhO+xuUOYM7zWsdH7jTGM6DMmdwp3m9oergohE8B0ofqo4nKO2l8kyA0oeq40QxCXBsmnz5KqheKHGCanESE6B6ocSeql2PdB7hAw+bvw4YlcQ7AAAAAElFTkSuQmCC" alt="lightCircleInSquare" />
+    <div class="opt-name">lightCircleInSquare</div>
+    <div class="opt-desc">Light circle-in-square pattern</div>
+    <code>pattern: lightCircleInSquare</code>
+  </div>
+</div>
+<div class="note">More patterns exist beyond this sample — ask to see the full list if none of these fit.</div>
+
+<h2>Eye shapes</h2>
+<div class="grid">
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA2CAAAAAC35wWyAAAAoklEQVR42u2TUQoCMQxEM2EXz+A1vP8Z/PcCHkC0attNdBEEcVnaQYRdOn8NPDKZpMhmNpi7S7kgCkRLPcaX14B+wjVutJdaedQYpJ4bzeabUNJ0IcGcSNAGDuzc3vOWaXt8dazZ34dVknt2XCzoMwormbH85KaKu6/Kvgw8hFVfTgMbuKiPfGZBtFQnw0E7uZ+m6v+yCnpGsB1Js52q3BnwAR5ARLXW6wgGAAAAAElFTkSuQmCC" alt="Shape0" />
+    <div class="opt-name">Shape0</div>
+    <div class="opt-desc">Classic square eye</div>
+    <code>eye_shape: Shape0</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADQAAAA0BAMAAAA3VgbYAAAALVBMVEUAAAD///+/v7/s7OwaGhp/f39TU1Nra2vl5eW9vb2xsbH9/f38/PzMzMzAwMD3C3Q6AAAAdElEQVR42mM4KIgLMAgOHikGDACTEmDAKseAVRNNpViRXS2AIoXmI7KkAnBLKaBLtbkAgRc2KWhw8WKRQvIRLilGDCnhUSniAgpf8EIjhRNbVD4AybBjjWU8CYCoZENsOsSTsOmWv/BkczyFw2AovjbilAIA1S48cI0VZF8AAAAASUVORK5CYII=" alt="Shape1" />
+    <div class="opt-name">Shape1</div>
+    <div class="opt-desc">Rounded square eye</div>
+    <code>eye_shape: Shape1</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADUAAAAzCAAAAAAS1B+xAAAApElEQVR42mP8z0AGYBzWuv4xE6seYgkTOVaNCF0S//GBkRYaKOBHqHQaUelQ4jlcWP0WhM6YjlCJlA6x62JET65ourC6kBEHG6+/GPHwcOoqRuP/JCo0GLHnREYa5MpfZOn6SpYuQXqmQwesQUgwHTJi1UUo5P8Tsgq7v/YT0IRdl8N/TBYxYfj/f4MDg8P+//tJypU4c8Jo7TBaw9IuDEd1QQAARUVYctVgK6MAAAAASUVORK5CYII=" alt="Shape2" />
+    <div class="opt-name">Shape2</div>
+    <div class="opt-desc">Circle inside a square</div>
+    <code>eye_shape: Shape2</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADUAAAAxBAMAAACIWfxVAAAAMFBMVEUAAAD////4+Pi/v79/f39AQEDv7++AgIAcHBxycnIaGhoPDw9kZGTZ2dn9/f37+/ujtrBMAAAAnUlEQVR42mMQxAkUGAZAToABAzDC5DClGNjwyDFQQy4Q4T4DNDlHZMcLoMqh+gxFjgWPHCNFcgEMDJw45ARgAYlFDuLph9jkBBAxgCEHDSxuPHIM+OQuYsoJw+QaMeXEkZIDTjMPkukWbHIGePyOL1wE4UZikQP7YiGuuGVg+Ei9NIEvneFLnwyGeNI1A5o2BlrnP1z5HV85MVjKMwDzqD/LYTCVnAAAAABJRU5ErkJggg==" alt="Shape3" />
+    <div class="opt-name">Shape3</div>
+    <div class="opt-desc">Circle inside a rounded square</div>
+    <code>eye_shape: Shape3</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAvBAMAAABXrFT6AAAAG1BMVEUAAAD///+/v7/v7+9/f39AQEBwcHDFxcXm5uYQMKUhAAAAwUlEQVR42sWUTRLCMAiFX+qMuqSt3dcb2BvoDbz/aXTKTyEtjrpQVmS+hAR4BG1i+Cno8bRpDS6YranBCEQigGBWAoAzD0iCzAF3DriN6kEP3Bh0egtkW9FnkhxR4FIGzgLIHbCVA3LvwO+CRSLNjpcLsOzuDhQrCnsMOg+OeiXMsUp9DobvQ4VXHRxI86gzv1Zgo1axuieW0Mt+9FkH8547lbRBJamuohKbTLvTW2pf5mNfT9SYTBTLeWsG//EzPADSLjUWbwaEjgAAAABJRU5ErkJggg==" alt="Shape4" />
+    <div class="opt-name">Shape4</div>
+    <div class="opt-desc">Circle</div>
+    <code>eye_shape: Shape4</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACsAAAApBAMAAABeu834AAAAGFBMVEUAAAD////6+vpwcHDv7+/5+fl/f3+/v7/mVCn+AAAAYElEQVR42mMQxAYCGLAKK5AhbIwMCmHCDKgAKiyAJsyIXZgFuzAzXJgR7gYxZGEktwngEmYgWxjulWEl7EiRsAB2YaqEN1ZhRuzC6KkNj7AgDmEH7MKCBtiFqZJ3MPMlAMrsLCMEtZ8TAAAAAElFTkSuQmCC" alt="Shape5" />
+    <div class="opt-name">Shape5</div>
+    <div class="opt-desc">Triangle eye</div>
+    <code>eye_shape: Shape5</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADEAAAAuBAMAAABzMuxhAAAAD1BMVEUAAAD///+/v79wcHDv7+8ef+ydAAAAZklEQVR42mMQxAEEGMiVEXFRUlI2NjZggAFGqAwDBoDKCOCUUcApw0CeDBOKg5FlBOkn4wB1FoaMEAMuGYFRGbrJCCJSDXXTgRBOGQFkGUZkGQVKUzzxeU4RlwyTIK4cTFlJQaIMADALKv4JufUuAAAAAElFTkSuQmCC" alt="Shape6" />
+    <div class="opt-name">Shape6</div>
+    <div class="opt-desc">Hexagon eye</div>
+    <code>eye_shape: Shape6</code>
+  </div>
+  <div class="opt">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAxBAMAAABqhecsAAAAG1BMVEUAAAD////v7+9wcHDf399AQEC/v7+fn59/f3/I4SagAAAAYUlEQVR42mMQxAUY6CcjwIABcMsw4pRhIEcmkLAMI6p7wQLYZARoKaMAdZUiThnGAZdhoaoMGxky7GTIMJMgI4BTRhCR1GiXDjhwyjDglsGSgfDKCJIjI4BTRhC3zICWOwCCOS/iMhMnQQAAAABJRU5ErkJggg==" alt="Shape9" />
+    <div class="opt-name">Shape9</div>
+    <div class="opt-desc">Custom eye shape 9</div>
+    <code>eye_shape: Shape9</code>
+  </div>
+</div>
+
+<h2>Gradient styles</h2>
+<div class="list">
+  <code>gradient_style: None</code>
+  <code>gradient_style: Horizontal</code>
+  <code>gradient_style: Vertical</code>
+  <code>gradient_style: Diagonal</code>
+  <code>gradient_style: Radial</code>
+</div>
+
+<h2>Error correction</h2>
+<div class="list">
+  <code>error_correction: L (7%)</code>
+  <code>error_correction: M (15%, default)</code>
+  <code>error_correction: Q (25%, logo-safe)</code>
+  <code>error_correction: H (30%, best for logos)</code>
+</div>
+
+<div class="note">Say e.g. "apply pattern Round with eye shape Shape4" — set_qr_design will apply it to an existing QR code.</div>
+
+<script>
+const Bridge = window.__scanovaBridge();
+Bridge.ready.then(() => { Bridge.onToolResult(() => {}); });
+</script>
+</body>
+</html>

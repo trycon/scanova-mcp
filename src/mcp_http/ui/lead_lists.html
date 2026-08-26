@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Lead Lists</title>
+<style>
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+  td.actions { white-space: nowrap; }
+  button { padding: 6px 10px; font-size: 12px; }
+  .confirm-box { width: 240px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <label><input type="checkbox" id="active-only" /> Active only</label>
+  <button id="refresh">Refresh</button>
+</div>
+<table>
+  <thead><tr><th>Name</th><th>ID</th><th>Active</th><th class="actions">Actions</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div class="status" id="status"></div>
+<div id="modal-slot"></div>
+
+<script>
+const Bridge = window.__scanovaBridge();
+
+const rowsEl = document.getElementById("rows");
+const statusEl = document.getElementById("status");
+const modalSlot = document.getElementById("modal-slot");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+function handleEnvelope(envelope, onOk) {
+  if (envelope && envelope.ok === false) {
+    setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Request failed", "error");
+    return;
+  }
+  onOk(envelope.data);
+}
+
+function renderRows(items) {
+  rowsEl.innerHTML = "";
+  if (!items || !items.length) {
+    rowsEl.innerHTML = '<tr><td colspan="4" class="empty">No lead lists found</td></tr>';
+    return;
+  }
+  for (const list of items) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td><input type="text" data-rename-for="' + list.id + '" value="' + (list.name || "").replace(/"/g, "&quot;") + '" /></td>' +
+      "<td>" + list.id + "</td>" +
+      '<td><input type="checkbox" data-active-for="' + list.id + '" ' + (list.is_active ? "checked" : "") + " /></td>" +
+      '<td class="actions"><button class="link" data-save="' + list.id + '">Save</button> <button class="danger" data-delete="' + list.id + '">Delete</button></td>';
+    rowsEl.appendChild(tr);
+  }
+}
+
+function load() {
+  setStatus("Loading…");
+  const activeOnly = document.getElementById("active-only").checked;
+  Bridge.callTool("list_lead_lists", { is_active: activeOnly ? true : undefined })
+    .then((envelope) => handleEnvelope(envelope, (data) => { renderRows(data.results || data); setStatus(""); }))
+    .catch(() => setStatus("Could not reach the host", "error"));
+}
+
+document.getElementById("refresh").addEventListener("click", load);
+document.getElementById("active-only").addEventListener("change", load);
+
+rowsEl.addEventListener("click", (event) => {
+  const saveId = event.target.dataset.save;
+  const deleteId = event.target.dataset.delete;
+  if (saveId) {
+    const nameInput = rowsEl.querySelector('[data-rename-for="' + saveId + '"]');
+    const activeInput = rowsEl.querySelector('[data-active-for="' + saveId + '"]');
+    setStatus("Saving…");
+    Bridge.callTool("update_lead_list", { lead_list_id: saveId, name: nameInput.value, is_active: activeInput.checked })
+      .then((envelope) => handleEnvelope(envelope, () => setStatus("Saved", "success")))
+      .catch(() => setStatus("Could not reach the host", "error"));
+  }
+  if (deleteId) {
+    modalSlot.innerHTML =
+      '<div class="confirm-backdrop"><div class="confirm-box"><p>Permanently delete this lead list?</p>' +
+      '<div class="confirm-actions"><button class="link" id="confirm-cancel">Cancel</button><button class="danger" id="confirm-ok">Delete</button></div></div></div>';
+    document.getElementById("confirm-cancel").addEventListener("click", () => { modalSlot.innerHTML = ""; });
+    document.getElementById("confirm-ok").addEventListener("click", () => {
+      modalSlot.innerHTML = "";
+      setStatus("Deleting…");
+      Bridge.callTool("delete_lead_list", { lead_list_id: deleteId })
+        .then((envelope) => handleEnvelope(envelope, () => { setStatus("Lead list deleted", "success"); load(); }))
+        .catch(() => setStatus("Could not reach the host", "error"));
+    });
+  }
+});
+
+Bridge.ready.then(() => load());
+</script>
+</body>
+</html>

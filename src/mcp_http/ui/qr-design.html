@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>QR Design</title>
+<style>
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 140px; }
+  img { max-width: 100%; height: auto; border-radius: var(--radius); }
+  .placeholder { color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="preview"><div class="placeholder">Loading…</div></div>
+<div class="status" id="status"></div>
+
+<script>
+const Bridge = window.__scanovaBridge();
+const previewEl = document.getElementById("preview");
+const statusEl = document.getElementById("status");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+// Minimal by design, same pattern as download-qr.html: this widget only
+// ever displays the QR code's current appearance so the user can verify a
+// set_qr_design change took effect — no form, no controls. The chat
+// message already states what design was applied.
+function renderImage(base64) {
+  if (!base64) {
+    previewEl.innerHTML = '<div class="placeholder">No preview available</div>';
+    return;
+  }
+  previewEl.innerHTML = "";
+  const img = document.createElement("img");
+  img.src = "data:image/png;base64," + base64;
+  img.alt = "QR code";
+  previewEl.appendChild(img);
+}
+
+function loadPreview(qrid) {
+  if (!qrid) {
+    previewEl.innerHTML = '<div class="placeholder">No QR code to preview</div>';
+    return;
+  }
+  Bridge.callTool("download_qr_code", { qrid, params: { file: "png" } })
+    .then((envelope) => {
+      if (envelope && envelope.ok === false) {
+        previewEl.innerHTML = '<div class="placeholder">' +
+          ((envelope.error && envelope.error.message) || "Failed to load preview") + '</div>';
+        return;
+      }
+      renderImage(envelope && envelope.data && envelope.data.data_base64);
+    })
+    .catch(() => previewEl.innerHTML = '<div class="placeholder">Could not load preview</div>');
+}
+
+function hydrate(envelope) {
+  if (!envelope) return;
+  if (envelope.ok === false) {
+    previewEl.innerHTML = '<div class="placeholder">' +
+      ((envelope.error && envelope.error.message) || "Failed to apply design") + '</div>';
+    return;
+  }
+  const data = envelope.data || {};
+  setStatus("");
+  loadPreview(data.qrid || null);
+}
+
+Bridge.ready.then(() => {
+  Bridge.onToolResult(hydrate);
+  hydrate(Bridge.getInitialData());
+});
+</script>
+</body>
+</html>

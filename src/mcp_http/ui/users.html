@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Users</title>
+<style>
+  table { margin-bottom: 16px; }
+  td.actions { white-space: nowrap; }
+  button { padding: 6px 10px; font-size: 12px; }
+  .row label { flex: 0 0 60px; }
+  .row input, .row select { flex: 1; }
+  .confirm-box { width: 240px; }
+</style>
+</head>
+<body>
+
+<table>
+  <thead><tr><th>Email</th><th>ID</th><th>Role</th><th class="actions">Actions</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div class="status" id="status"></div>
+
+<fieldset>
+  <legend>Invite user</legend>
+  <div class="row"><label for="email">Email</label><input type="text" id="email" placeholder="name@company.com" /></div>
+  <div class="row"><label for="role">Role</label><select id="role"></select></div>
+  <button id="invite">Send invite</button>
+</fieldset>
+
+<div id="modal-slot"></div>
+
+<script>
+const Bridge = window.__scanovaBridge();
+
+const rowsEl = document.getElementById("rows");
+const statusEl = document.getElementById("status");
+const roleSelect = document.getElementById("role");
+const modalSlot = document.getElementById("modal-slot");
+
+let roles = [];
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+function handleEnvelope(envelope, onOk) {
+  if (envelope && envelope.ok === false) {
+    setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Request failed", "error");
+    return;
+  }
+  onOk(envelope.data);
+}
+
+function roleOptions(selected) {
+  return roles.map((r) => {
+    const value = r.value || r.slug || r.role || r;
+    const label = r.label || r.name || value;
+    return '<option value="' + value + '"' + (value === selected ? " selected" : "") + ">" + label + "</option>";
+  }).join("");
+}
+
+function renderRows(items) {
+  rowsEl.innerHTML = "";
+  if (!items || !items.length) {
+    rowsEl.innerHTML = '<tr><td colspan="4" class="empty">No users found</td></tr>';
+    return;
+  }
+  for (const user of items) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + (user.email || "—") + "</td>" +
+      "<td>" + user.id + "</td>" +
+      '<td><select data-role-for="' + user.id + '">' + roleOptions(user.role) + "</select></td>" +
+      '<td class="actions"><button class="link" data-save="' + user.id + '">Save</button> <button class="danger" data-remove="' + user.id + '">Remove</button></td>';
+    rowsEl.appendChild(tr);
+  }
+}
+
+function loadRolesThenUsers() {
+  setStatus("Loading…");
+  Bridge.callTool("list_user_roles", {})
+    .then((envelope) => handleEnvelope(envelope, (data) => {
+      roles = (data && (data.results || data)) || [];
+      roleSelect.innerHTML = roleOptions(null);
+      return Bridge.callTool("list_users", {});
+    }))
+    .then((envelope) => envelope && handleEnvelope(envelope, (data) => { renderRows(data.results || data); setStatus(""); }))
+    .catch(() => setStatus("Could not reach the host", "error"));
+}
+
+rowsEl.addEventListener("click", (event) => {
+  const saveId = event.target.dataset.save;
+  const removeId = event.target.dataset.remove;
+  if (saveId) {
+    const roleInput = rowsEl.querySelector('[data-role-for="' + saveId + '"]');
+    setStatus("Saving…");
+    Bridge.callTool("update_user_role", { user_id: saveId, access_level: roleInput.value })
+      .then((envelope) => handleEnvelope(envelope, () => setStatus("Role updated", "success")))
+      .catch(() => setStatus("Could not reach the host", "error"));
+  }
+  if (removeId) {
+    modalSlot.innerHTML =
+      '<div class="confirm-backdrop"><div class="confirm-box"><p>Remove this user from the account?</p>' +
+      '<div class="confirm-actions"><button class="link" id="confirm-cancel">Cancel</button><button class="danger" id="confirm-ok">Remove</button></div></div></div>';
+    document.getElementById("confirm-cancel").addEventListener("click", () => { modalSlot.innerHTML = ""; });
+    document.getElementById("confirm-ok").addEventListener("click", () => {
+      modalSlot.innerHTML = "";
+      setStatus("Removing…");
+      Bridge.callTool("remove_user", { user_id: removeId })
+        .then((envelope) => handleEnvelope(envelope, () => { setStatus("User removed", "success"); loadRolesThenUsers(); }))
+        .catch(() => setStatus("Could not reach the host", "error"));
+    });
+  }
+});
+
+document.getElementById("invite").addEventListener("click", () => {
+  const email = document.getElementById("email").value.trim();
+  const role = roleSelect.value;
+  if (!email) { setStatus("Email is required", "error"); return; }
+  setStatus("Sending invite…");
+  Bridge.callTool("add_user", { email, role })
+    .then((envelope) => handleEnvelope(envelope, () => {
+      setStatus("Invite sent to " + email, "success");
+      document.getElementById("email").value = "";
+      loadRolesThenUsers();
+    }))
+    .catch(() => setStatus("Could not reach the host", "error"));
+});
+
+Bridge.ready.then(() => loadRolesThenUsers());
+</script>
+</body>
+</html>

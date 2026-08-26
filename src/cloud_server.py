@@ -1,13 +1,14 @@
+import json
 import logging
 import os
 
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from mcp.server.fastmcp import FastMCP
 
-from config import MCP_RESOURCE_URL, OAUTH_SERVER_URL, OPENAI_APPS_CHALLENGE
+from config import ALLOWED_ORIGINS, MCP_RESOURCE_URL, OAUTH_SERVER_URL, OPENAI_APPS_CHALLENGE
 from mcp_http.fastmcp_tools import register_fastmcp_tools
 from mcp_http.protocol import PUBLIC_METHODS, handle_tool_method
 
@@ -16,10 +17,12 @@ log = logging.getLogger("mcp")
 # Create FastAPI app for HTTP transport
 app = FastAPI(title="Scanova MCP Server", version="1.0.0")
 
-# Add CORS middleware for web access
+# Add CORS middleware for web access.
+# Defaults to "*" for backward compatibility; set ALLOWED_ORIGINS (see
+# config.py) to scope this down once UI-capable client origins are known.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly for production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -90,6 +93,19 @@ async def openai_apps_challenge():
 async def mcp_endpoint(request: Request):
     try:
         body = await request.json()
+    except json.JSONDecodeError:
+        # Empty/malformed body — a client mistake (or a bot/health-check
+        # probing the endpoint), not a server fault. Distinct from the
+        # generic except below: proper JSON-RPC Parse error code, 400 (not
+        # 500), and logged at warning (not error) so it doesn't read as a
+        # scanova-mcp bug in the logs.
+        log.warning("Received non-JSON or empty request body on /mcp")
+        return JSONResponse(
+            content={"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error: invalid or empty JSON body"}},
+            status_code=400,
+        )
+
+    try:
         method = body.get("method")
         api_key = extract_api_key(request)
 
@@ -107,6 +123,7 @@ async def mcp_endpoint(request: Request):
             )
 
         result = handle_tool_method(method, body, api_key)
+
         if result is None:
             # Notification methods must not return a response body
             return Response(status_code=202)
@@ -117,11 +134,37 @@ async def mcp_endpoint(request: Request):
         return JSONResponse(
             content={
                 "jsonrpc": "2.0",
-                "id": body.get("id") if "body" in locals() else None,
+                "id": body.get("id") if isinstance(body, dict) else None,
                 "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
             },
             status_code=500,
         )
+
+
+@app.get("/mcp")
+async def mcp_stream(request: Request):
+    """
+    Streamable HTTP transport's optional server-push stream. This server has
+    no session-scoped server-initiated messages to push (no elicitation or
+    sampling requests), so there's nothing to stream — but some MCP hosts
+    (e.g. claude.ai's connector proxy) treat a 405 here as the whole
+    connector being unreachable when relaying a widget-triggered tools/call,
+    even though tools/call over POST succeeds. Open and hold a minimal SSE
+    stream instead of 405ing so that check passes.
+    """
+    async def event_stream():
+        yield ": connected\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.delete("/mcp")
+async def mcp_session_end():
+    """Streamable HTTP transport's optional session-termination request.
+    This server is stateless (no Mcp-Session-Id), so there's nothing to
+    tear down server-side — just acknowledge so clients that always send
+    this on disconnect don't see an error."""
+    return Response(status_code=204)
 
 
 @app.get("/")

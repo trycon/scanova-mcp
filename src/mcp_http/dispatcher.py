@@ -4,7 +4,8 @@ import json
 
 import docs_client
 from design import DESIGN_OPTIONS, apply_design, build_pattern_info, extract_design_args
-from analytics import export_analytics, export_raw_scans, get_account_stats, get_qr_analytics
+from analytics import get_account_stats, get_qr_analytics
+from billing import get_current_plan
 from folders import (
     create_folder,
     delete_folder,
@@ -13,7 +14,7 @@ from folders import (
     unassign_qr_codes_from_folder,
     update_folder,
 )
-from forms import delete_form, list_forms, retrieve_form, update_form
+from forms import create_form, delete_form, list_forms, retrieve_form, update_form
 from leads import delete_lead_list, list_lead_lists, retrieve_lead_list, update_lead_list
 from qrcode import (
     activate_qr_code,
@@ -25,13 +26,23 @@ from qrcode import (
     detach_form_from_qr,
     detach_lead_list_from_qr,
     download_qr_code,
-    download_qr_printable,
     get_qr_categories,
+    get_qr_category_fields,
     list_qr_codes,
     retrieve_qr_code,
     update_qr_code,
+    validate_qr_info,
 )
-from users import add_user, get_user, list_user_roles, list_users, remove_user, update_user_role
+from tags import list_tags
+from users import (
+    add_user,
+    create_custom_role,
+    get_user,
+    list_user_roles,
+    list_users,
+    remove_user,
+    update_user_role,
+)
 
 
 def _set_qr_design_handler(arguments: dict, api_key: str) -> dict:
@@ -73,17 +84,90 @@ def _set_qr_design_handler(arguments: dict, api_key: str) -> dict:
     return apply_design(qrid, pattern_info, api_key)
 
 
+# QR category IDs whose `info` shape is a page-builder-style nested/typed
+# section array (Custom Page, Document, Wedding, Social Media, Audio,
+# Product, Event), an unsupported array-of-files shape (Image), is entirely
+# undocumented (Feedback, Real Estate, Link Page, GS1), has conflicting/
+# unverified documentation (Restaurant, 25 and 44 — Scanova's own docs
+# disagree on whether its info is a flat object or a page-builder array),
+# or was explicitly deemed out of scope for this form (Business Card, 24;
+# Coupon, 17 — its info shape is unconfirmed, two sources in Scanova's own
+# frontend codebase disagree) — see QR_CATEGORY_FIELDS in qrcode.py for the
+# per-category detail. Rather than let a freehand-constructed payload fail
+# with a confusing API validation error, these are blocked here with
+# guidance to create them in the app.
+CATEGORIES_REQUIRING_SCANOVA_APP = {9, 13, 14, 15, 16, 17, 18, 19, 20, 24, 25, 26, 27, 28, 31, 44}
+
+
+def _create_qr_code_handler(arguments: dict, api_key: str) -> dict:
+    """
+    Wraps create_qr_code so a failed attempt echoes back what was submitted
+    (as `attempted_params`) — the UI form is only shown on failure (see
+    ui_response.py:CONDITIONAL_UI_RULES), and needs this to pre-fill itself
+    instead of the user re-typing everything from scratch.
+    """
+    params = arguments.get("params") or {}
+    try:
+        category_id = int(params.get("category"))
+    except (TypeError, ValueError):
+        category_id = None
+    if category_id in CATEGORIES_REQUIRING_SCANOVA_APP:
+        return {
+            "error": (
+                "This QR code category needs to be created via the Scanova application — "
+                "visit https://app.scanova.io to create it there."
+            ),
+            "attempted_params": params,
+        }
+
+    result = create_qr_code(params, api_key=api_key)
+    if isinstance(result, dict) and not result.get("qrid"):
+        return {**result, "attempted_params": params}
+    return result
+
+
+def _open_qr_code_creation_form_handler(arguments: dict) -> dict:
+    """No API call — just tells the widget what (if anything) to pre-fill."""
+    return {
+        "mode": "blank",
+        "prefill": {
+            "name": arguments.get("name"),
+            "category": arguments.get("category"),
+            "qr_type": arguments.get("qr_type"),
+        },
+    }
+
+
+LIST_QR_CODES_MAX_LIMIT = 20
+
+
 def _list_qr_params(arguments: dict) -> dict | None:
     qr_params = {}
     if arguments.get("page"):
         qr_params["page"] = arguments["page"]
     if arguments.get("limit"):
-        qr_params["limit"] = arguments["limit"]
+        # Scanova API's qrcode/ list endpoint expects "page_size", not "limit" —
+        # https://docs.scanova.io/api-reference/management-api/qr/list
+        # Enforced here (not just the schema's "maximum") so a client that
+        # ignores the input schema can't request more than one page's worth
+        # in a single call — it must paginate via "page" instead.
+        qr_params["page_size"] = min(arguments["limit"], LIST_QR_CODES_MAX_LIMIT)
     if arguments.get("search"):
         qr_params["search"] = arguments["search"]
     if arguments.get("is_page") is not None:
         qr_params["is_page"] = arguments["is_page"]
     return qr_params or None
+
+
+def _list_tags_params(arguments: dict) -> dict:
+    params = {}
+    if arguments.get("name"):
+        params["name"] = arguments["name"]
+    if arguments.get("page"):
+        params["page"] = arguments["page"]
+    if arguments.get("page_size"):
+        params["page_size"] = arguments["page_size"]
+    return params
 
 
 # Dispatch table: tool_name -> callable(arguments, api_key) -> result
@@ -97,74 +181,38 @@ _DISPATCH = {
         else docs_client.filesystem(a["query"])
     ),
     # ------------------------------------------------------------------ #
+    # QR Code Creation & Validation
+    # ------------------------------------------------------------------ #
+    "get_qr_categories": lambda a, k: get_qr_categories(
+        view_type=a.get("view_type", "all"), api_key=k
+    ),
+    "get_qr_category_fields": lambda a, k: get_qr_category_fields(a.get("category")),
+    "validate_qr_info": lambda a, k: validate_qr_info(
+        category=a.get("category"), info=a.get("info"), api_key=k
+    ),
+    "create_qr_code": lambda a, k: _create_qr_code_handler(a, k),
+    "open_qr_code_creation_form": lambda a, k: _open_qr_code_creation_form_handler(a),
+    # ------------------------------------------------------------------ #
     # QR Code Design
     # ------------------------------------------------------------------ #
     "get_qr_design_options": lambda a, k: DESIGN_OPTIONS,
     "set_qr_design": lambda a, k: _set_qr_design_handler(a, k),
     # ------------------------------------------------------------------ #
-    # QR Code Management
+    # QR Code Lifecycle & Retrieval
     # ------------------------------------------------------------------ #
-    "create_qr_code": lambda a, k: create_qr_code(a.get("params"), api_key=k),
     "list_qr_codes": lambda a, k: list_qr_codes(_list_qr_params(a), api_key=k),
-    "update_qr_code": lambda a, k: update_qr_code(a.get("qrid"), a.get("params"), api_key=k),
     "retrieve_qr_code": lambda a, k: retrieve_qr_code(a.get("qrid"), api_key=k),
-    "download_qr_code": lambda a, k: download_qr_code(a.get("qrid"), a.get("params"), api_key=k),
+    "update_qr_code": lambda a, k: update_qr_code(a.get("qrid"), a.get("params"), api_key=k),
     "activate_qr_code": lambda a, k: activate_qr_code(a.get("qrid"), api_key=k),
     "deactivate_qr_code": lambda a, k: deactivate_qr_code(a.get("qrid"), api_key=k),
     "delete_qr_code": lambda a, k: delete_qr_code(a.get("qrid"), api_key=k),
-    "get_qr_categories": lambda a, k: get_qr_categories(
-        view_type=a.get("view_type", "all"), api_key=k
-    ),
-    "download_qr_printable": lambda a, k: download_qr_printable(
-        qrid=a.get("qrid"),
-        size=a.get("size", 600),
-        name=a.get("name"),
-        api_key=k,
-    ),
-    "attach_form_to_qr": lambda a, k: attach_form_to_qr(
-        qrid=a.get("qrid"), form_id=a.get("form_id"), api_key=k
-    ),
-    "detach_form_from_qr": lambda a, k: detach_form_from_qr(a.get("qrid"), api_key=k),
-    "attach_lead_list_to_qr": lambda a, k: attach_lead_list_to_qr(
-        qrid=a.get("qrid"), lead_list_id=a.get("lead_list_id"), api_key=k
-    ),
-    "detach_lead_list_from_qr": lambda a, k: detach_lead_list_from_qr(a.get("qrid"), api_key=k),
     # ------------------------------------------------------------------ #
-    # Analytics
+    # QR Code Export & Download
     # ------------------------------------------------------------------ #
-    "get_account_stats": lambda a, k: get_account_stats(
-        fields=a.get("fields"), api_key=k
-    ),
-    "get_qr_analytics": lambda a, k: get_qr_analytics(
-        filter_by=a["filter_by"],
-        q=a["q"],
-        types=a["types"],
-        from_date=a["from_date"],
-        to_date=a["to_date"],
-        exclude_bot_scan=a.get("exclude_bot_scan", False),
-        api_key=k,
-    ),
-    "export_analytics": lambda a, k: export_analytics(
-        filter_by=a["filter_by"],
-        q=a["q"],
-        from_date=a["from_date"],
-        to_date=a["to_date"],
-        file_format=a.get("file_format", "xlsx"),
-        exclude_bot_scan=a.get("exclude_bot_scan", False),
-        api_key=k,
-    ),
-    "export_raw_scans": lambda a, k: export_raw_scans(
-        filter_by=a["filter_by"],
-        q=a["q"],
-        from_date=a["from_date"],
-        to_date=a["to_date"],
-        file_format=a.get("file_format", "csv"),
-        scan_type=a.get("scan_type", "raw"),
-        exclude_bot_scan=a.get("exclude_bot_scan", False),
-        api_key=k,
-    ),
+    "download_qr_code": lambda a, k: download_qr_code(a.get("qrid"), a.get("params"), api_key=k),
+    # download_qr_printable removed for now (2026-08-21) — not registered.
     # ------------------------------------------------------------------ #
-    # Folder Management
+    # Organization: Folders
     # ------------------------------------------------------------------ #
     "create_folder": lambda a, k: create_folder(
         name=a["name"], folder_type=a["folder_type"], api_key=k
@@ -191,10 +239,22 @@ _DISPATCH = {
         folder_id=a["folder_id"], qr_code_ids=a["qr_code_ids"], api_key=k
     ),
     # ------------------------------------------------------------------ #
+    # Organization: Tags
+    # ------------------------------------------------------------------ #
+    "list_tags": lambda a, k: list_tags(**_list_tags_params(a), api_key=k),
+    # ------------------------------------------------------------------ #
     # Forms
     # ------------------------------------------------------------------ #
     "list_forms": lambda a, k: list_forms(is_active=a.get("is_active"), api_key=k),
     "retrieve_form": lambda a, k: retrieve_form(form_id=a["form_id"], api_key=k),
+    "create_form": lambda a, k: create_form(
+        name=a["name"],
+        data=a["data"],
+        qr_id=a.get("qr_id"),
+        theme_id=a.get("theme_id"),
+        theme_overrides=a.get("theme_overrides"),
+        api_key=k,
+    ),
     "update_form": lambda a, k: update_form(
         form_id=a["form_id"],
         name=a.get("name"),
@@ -202,8 +262,12 @@ _DISPATCH = {
         api_key=k,
     ),
     "delete_form": lambda a, k: delete_form(form_id=a["form_id"], api_key=k),
+    "attach_form_to_qr": lambda a, k: attach_form_to_qr(
+        qrid=a.get("qrid"), form_id=a.get("form_id"), api_key=k
+    ),
+    "detach_form_from_qr": lambda a, k: detach_form_from_qr(a.get("qrid"), api_key=k),
     # ------------------------------------------------------------------ #
-    # Lead Lists
+    # Lead Lists (legacy — superseded by Forms)
     # ------------------------------------------------------------------ #
     "list_lead_lists": lambda a, k: list_lead_lists(is_active=a.get("is_active"), api_key=k),
     "retrieve_lead_list": lambda a, k: retrieve_lead_list(
@@ -218,16 +282,45 @@ _DISPATCH = {
     "delete_lead_list": lambda a, k: delete_lead_list(
         lead_list_id=a["lead_list_id"], api_key=k
     ),
+    "attach_lead_list_to_qr": lambda a, k: attach_lead_list_to_qr(
+        qrid=a.get("qrid"), lead_list_id=a.get("lead_list_id"), api_key=k
+    ),
+    "detach_lead_list_from_qr": lambda a, k: detach_lead_list_from_qr(a.get("qrid"), api_key=k),
     # ------------------------------------------------------------------ #
-    # User Management
+    # Analytics & Reporting
+    # ------------------------------------------------------------------ #
+    "get_account_stats": lambda a, k: get_account_stats(
+        fields=a.get("fields"), api_key=k
+    ),
+    "get_qr_analytics": lambda a, k: get_qr_analytics(
+        filter_by=a["filter_by"],
+        q=a["q"],
+        types=a["types"],
+        from_date=a["from_date"],
+        to_date=a["to_date"],
+        exclude_bot_scan=a.get("exclude_bot_scan", False),
+        api_key=k,
+    ),
+    # export_analytics / export_raw_scans removed for now (2026-08-24) — not
+    # registered as tools, but the underlying analytics.py functions are
+    # left in place for an easy re-enable later.
+    # ------------------------------------------------------------------ #
+    # Account & Billing
+    # ------------------------------------------------------------------ #
+    "get_current_plan": lambda a, k: get_current_plan(api_key=k),
+    # ------------------------------------------------------------------ #
+    # Team & Access Management
     # ------------------------------------------------------------------ #
     "list_users": lambda a, k: list_users(api_key=k),
     "get_user": lambda a, k: get_user(user_id=a["user_id"], api_key=k),
     "add_user": lambda a, k: add_user(email=a["email"], role=a["role"], api_key=k),
     "remove_user": lambda a, k: remove_user(user_id=a["user_id"], api_key=k),
     "list_user_roles": lambda a, k: list_user_roles(api_key=k),
+    "create_custom_role": lambda a, k: create_custom_role(
+        name=a["name"], permissions=a["permissions"], api_key=k
+    ),
     "update_user_role": lambda a, k: update_user_role(
-        user_id=a["user_id"], role=a["role"], api_key=k
+        user_id=a["user_id"], access_level=a["access_level"], api_key=k
     ),
 }
 

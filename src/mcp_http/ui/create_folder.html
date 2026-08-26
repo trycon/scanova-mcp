@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Create Folder</title>
+<style>
+  body { max-width: 360px; }
+  .row { margin-bottom: 12px; }
+  .row label { display: block; margin-bottom: 4px; color: var(--muted); }
+  .row input[type="text"], .row select { width: 100%; }
+</style>
+</head>
+<body>
+
+<div class="row">
+  <label for="name">Folder name</label>
+  <input type="text" id="name" placeholder="e.g. Marketing Campaign" />
+</div>
+<div class="row">
+  <label for="folder_type">Type</label>
+  <select id="folder_type">
+    <option value="qr">QR codes</option>
+    <option value="page">Pages</option>
+  </select>
+</div>
+<button id="create">Create folder</button>
+<div class="status" id="status"></div>
+
+<script>
+const Bridge = window.__scanovaBridge();
+
+const statusEl = document.getElementById("status");
+const createBtn = document.getElementById("create");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+createBtn.addEventListener("click", () => {
+  const name = document.getElementById("name").value.trim();
+  const folder_type = document.getElementById("folder_type").value;
+  if (!name) { setStatus("Folder name is required", "error"); return; }
+
+  createBtn.disabled = true;
+  setStatus("Creating…");
+  Bridge.callTool("create_folder", { name, folder_type })
+    .then((envelope) => {
+      // Tool execution errors (Part 9B category 1) — same {ok:false,...}
+      // envelope normalizer.py already produces, no new error shape here.
+      if (envelope && envelope.ok === false) {
+        setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Failed to create folder", "error");
+        return;
+      }
+      setStatus("Folder “" + name + "” created", "success");
+      document.getElementById("name").value = "";
+    })
+    .catch(() => setStatus("Could not reach the host to create the folder", "error"))
+    .finally(() => { createBtn.disabled = false; });
+});
+</script>
+</body>
+</html>

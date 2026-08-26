@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; object-src data:; connect-src 'none';" />
+<title>QR Code</title>
+<style>
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 140px; }
+  img { max-width: 100%; height: auto; border-radius: var(--radius); }
+  embed { width: 100%; max-width: 320px; height: 400px; border: 1px solid var(--border); border-radius: var(--radius); }
+  .placeholder { color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="preview"><div class="placeholder">Loading…</div></div>
+<div class="status" id="status"></div>
+
+<script>
+const Bridge = window.__scanovaBridge();
+const previewEl = document.getElementById("preview");
+const statusEl = document.getElementById("status");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+// Minimal by design: this widget only ever displays whatever
+// download_qr_code already returned — no format/size controls, no buttons.
+// Image formats render as an image (right-click to save), PDF gets an
+// inline preview via <embed> (browser-native PDF viewer support varies by
+// host/browser).
+function render(envelope) {
+  if (!envelope) {
+    previewEl.innerHTML = '<div class="placeholder">Loading…</div>';
+    return;
+  }
+  if (envelope.ok === false) {
+    previewEl.innerHTML = '<div class="placeholder">' +
+      ((envelope.error && envelope.error.message) || "Failed to load") + '</div>';
+    return;
+  }
+  const data = envelope.data || {};
+  const contentType = data.content_type || "";
+  const base64 = data.data_base64;
+  if (!base64) {
+    previewEl.innerHTML = '<div class="placeholder">No file returned</div>';
+    return;
+  }
+
+  const dataUrl = "data:" + contentType + ";base64," + base64;
+  previewEl.innerHTML = "";
+  if (contentType.startsWith("image/")) {
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = "QR code";
+    previewEl.appendChild(img);
+  } else if (contentType === "application/pdf") {
+    const embed = document.createElement("embed");
+    embed.type = "application/pdf";
+    embed.src = dataUrl;
+    previewEl.appendChild(embed);
+  } else {
+    previewEl.innerHTML = '<div class="placeholder">Preview not available for this file type</div>';
+  }
+  setStatus("");
+}
+
+Bridge.ready.then(() => {
+  Bridge.onToolResult(render);
+  render(Bridge.getInitialData());
+});
+</script>
+</body>
+</html>

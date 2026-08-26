@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" />
+<title>Account stats</title>
+<style>
+  .cards { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .cards .card { flex: 1 1 110px; padding: 10px 12px; }
+  .card .value { font-size: 22px; font-weight: 700; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+</style>
+</head>
+<body>
+
+<div class="cards" id="stat-cards"></div>
+<div class="status" id="status"></div>
+
+<script>
+const Bridge = window.__scanovaBridge();
+
+const statusEl = document.getElementById("status");
+const cardsEl = document.getElementById("stat-cards");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+function handleEnvelope(envelope, onOk) {
+  if (envelope && envelope.ok === false) {
+    setStatus((envelope.error && envelope.error.message) || JSON.stringify(envelope.error) || "Request failed", "error");
+    return;
+  }
+  onOk(envelope.data || {});
+}
+
+function renderCards(stats) {
+  cardsEl.innerHTML = "";
+  const labels = { total_qr_codes: "QR codes", total_scans: "Scans", total_users: "Users", active_qr_codes: "Active QR codes" };
+  for (const [key, value] of Object.entries(stats || {})) {
+    if (typeof value !== "number" && typeof value !== "string") continue; // skip nested/unknown shapes defensively
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = '<div class="value">' + value + '</div><div class="label">' + (labels[key] || key) + "</div>";
+    cardsEl.appendChild(card);
+  }
+}
+
+function loadAccountStats() {
+  Bridge.callTool("get_account_stats", {})
+    .then((envelope) => handleEnvelope(envelope, renderCards))
+    .catch(() => setStatus("Could not reach the host", "error"));
+}
+
+Bridge.ready.then(() => loadAccountStats());
+</script>
+</body>
+</html>
