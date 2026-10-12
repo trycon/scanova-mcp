@@ -46,6 +46,8 @@ ADDITIVE = frozenset({
     # page_tools.py — edit_page only changes the page's draft; what scanners
     # see changes on publish_page.
     "create_page", "edit_page",
+    # Adds a file to the account's media library; nothing uses it until a page does.
+    "upload_media",
 })
 
 DESTRUCTIVE = frozenset({

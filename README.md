@@ -218,6 +218,7 @@ Add the following configuration to your IDE's MCP settings:
 | Tool | Type | Description |
 |---|---|---|
 | `list_media` | Read-only | List files in the account's media library (images, PDFs, videos…), e.g |
+| `upload_media` | Write (additive) | Add an image (PNG, JPEG, GIF, WebP) or PDF to the media library from its bytes (base64, ≤ 10 MB) — e.g. a document's pictures for a landing page |
 
 ### Integrations
 
