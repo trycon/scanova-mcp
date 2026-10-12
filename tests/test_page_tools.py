@@ -318,3 +318,54 @@ def test_block_schema_is_compact_but_complete():
     d = P._block_info("button")["data_schema"]
     assert {"label", "link", "type"} <= set(d["properties"]) and d["required"] == ["label", "link"]
     assert not {"cardStyle", "layout"} & set(d["properties"])
+
+
+# ── upload_media ───────────────────────────────────────────────────────────── #
+
+import base64 as _b64
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+
+@pytest.fixture
+def upload(monkeypatch):
+    calls = []
+
+    def fake(method, url, headers=None, files=None, timeout=None, **kw):
+        calls.append({"method": method, "path": url.split("/", 3)[-1], "headers": headers, "files": files})
+        return _Resp(status=201, body={"id": 7, "file": "https://media.scanova.io/u/hero.png", "file_name": "hero.png", "mime_type": "image/png", "file_type": "image", "size": 40, "user": 99})
+
+    monkeypatch.setattr(scanova_api.requests, "request", fake)
+    return calls
+
+
+def test_upload_media_sends_the_file_as_multipart_as_the_caller(upload):
+    out = execute_tool("upload_media", {"file_name": "hero.png", "content_base64": _b64.b64encode(PNG).decode()}, KEY)
+    assert out == {"id": 7, "file": "https://media.scanova.io/u/hero.png", "file_name": "hero.png", "mime_type": "image/png", "file_type": "image", "size": 40}
+    call = upload[-1]
+    assert (call["method"], call["path"]) == ("POST", "media/")
+    assert call["headers"] == {"Authorization": KEY}
+    assert call["files"] == {"upload": ("hero.png", PNG, "image/png")}
+
+
+def test_upload_media_checks_what_it_sends(upload):
+    enc = lambda b: _b64.b64encode(b).decode()
+    assert "Only PNG" in execute_tool("upload_media", {"file_name": "x.svg", "content_base64": enc(b"<svg/>")}, KEY)["error"]
+    assert "isn't a PNG" in execute_tool("upload_media", {"file_name": "x.png", "content_base64": enc(b"%PDF-1.4 hi")}, KEY)["error"]
+    assert "base64" in execute_tool("upload_media", {"file_name": "x.png", "content_base64": "not base64!!"}, KEY)["error"]
+    assert "required" in execute_tool("upload_media", {"file_name": "x.png", "content_base64": ""}, KEY)["error"]
+    big = PNG + b"\x00" * (P.MAX_UPLOAD_BYTES)
+    assert "over 10 MB" in execute_tool("upload_media", {"file_name": "x.png", "content_base64": enc(big)}, KEY)["error"]
+    assert "required" in execute_tool("upload_media", {"file_name": "x.png"}, KEY)["error"]
+    assert upload == []
+    # A path in the name is dropped; the extension follows the real type.
+    execute_tool("upload_media", {"file_name": "../../etc/passwd", "content_base64": enc(PNG), "mime_type": "image/png"}, KEY)
+    assert upload[-1]["files"]["upload"][0] == "passwd.png"
+    assert "error" in execute_tool("upload_media", {"file_name": "a.png", "content_base64": enc(PNG)}, None)
+
+
+def test_upload_media_is_additive_and_in_pages():
+    from mcp_http.toolsets import toolset_for
+    a = annotations_for("upload_media")
+    assert a["readOnlyHint"] is False and a["destructiveHint"] is False
+    assert toolset_for("upload_media") == "pages"

@@ -52,7 +52,7 @@ TOOLSETS: dict[str, tuple[str, str, frozenset[str]]] = {
         "get_integrations_overview", "list_webhooks", "list_tracking_sites", "list_tracking_funnels",
     })),
     "pages": ("Pages & media", "Landing pages (create, change blocks and themes, preview, publish), their templates and the media library.", frozenset({
-        "list_page_templates", "list_media",
+        "list_page_templates", "list_media", "upload_media",
         "list_page_blocks", "get_page_block", "list_page_themes", "get_page_theme", "get_page_template",
         "get_page", "create_page", "edit_page", "get_page_preview", "publish_page",
     })),

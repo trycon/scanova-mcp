@@ -31,3 +31,20 @@ def scanova(method: str, path: str, api_key: str, params: dict = None, body=None
         return api_result(resp)
     except requests.RequestException as e:
         return {"error": f"API request failed: {str(e)}"}
+
+
+def scanova_upload(path: str, api_key: str, file_name: str, data: bytes, mime_type: str, field: str = "upload"):
+    """A multipart upload (the media library's POST media/) as the caller; the result as api_result gives it."""
+    if not api_key:
+        return NO_KEY
+    try:
+        resp = requests.request(
+            "POST",
+            f"{_BASE}/{path.lstrip('/')}",
+            headers={"Authorization": api_key},
+            files={field: (file_name, data, mime_type)},
+            timeout=60,
+        )
+        return api_result(resp)
+    except requests.RequestException as e:
+        return {"error": f"API request failed: {str(e)}"}

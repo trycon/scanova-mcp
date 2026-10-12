@@ -14,6 +14,7 @@ page categories a block belongs to, defaults). Changes are checked against
 them before anything is saved.
 """
 
+import base64
 import copy
 import html
 import json
@@ -27,7 +28,7 @@ from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT7
 
 from mcp_http.more_tools import _SEGMENT, MoreTool, _input, _missing, _object
-from scanova_api import NO_KEY, scanova
+from scanova_api import NO_KEY, scanova, scanova_upload
 
 _DIR = Path(__file__).resolve().parent.parent / "page_blocks"
 _SCHEMAS = _DIR / "schemas"
@@ -743,6 +744,54 @@ _PAGE_OUT = _object({
     "preview_url": {"type": "string"}, "page_url": {"type": ["string", "null"]},
 })
 
+# ── media upload ───────────────────────────────────────────────────────────── #
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+# What a page can show, by its first bytes. No SVG: it can carry scripts.
+_UPLOAD_TYPES = {
+    "image/png": (lambda b: b.startswith(b"\x89PNG\r\n\x1a\n"), ".png"),
+    "image/jpeg": (lambda b: b.startswith(b"\xff\xd8\xff"), ".jpg"),
+    "image/gif": (lambda b: b[:6] in (b"GIF87a", b"GIF89a"), ".gif"),
+    "image/webp": (lambda b: b[:4] == b"RIFF" and b[8:12] == b"WEBP", ".webp"),
+    "application/pdf": (lambda b: b.startswith(b"%PDF-"), ".pdf"),
+}
+_BY_EXTENSION = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".pdf": "application/pdf"}
+_SAFE_NAME = re.compile(r"[^A-Za-z0-9 ._()-]+")
+
+
+def upload_media(a: dict, k: str):
+    """A file (base64) into the account's media library — e.g. the images of a document a page is made from. Its
+    URL then goes in an image block. The bytes must be what the name says (a PNG is a PNG)."""
+    if not k:
+        return NO_KEY
+    if err := _missing(a, "file_name", "content_base64"):
+        return err
+    name = _SAFE_NAME.sub("_", str(a["file_name"]).replace("\\", "/").rsplit("/", 1)[-1]).strip(" ._")[:120] or "file"
+    ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    mime = str(a.get("mime_type") or _BY_EXTENSION.get(ext, "")).lower()
+    if mime == "image/jpg":
+        mime = "image/jpeg"
+    if mime not in _UPLOAD_TYPES:
+        return {"error": "Only PNG, JPEG, GIF, WebP images and PDFs can be uploaded"}
+    try:
+        data = base64.b64decode(str(a["content_base64"]), validate=True)
+    except (ValueError, TypeError):
+        return {"error": "content_base64 isn't valid base64"}
+    if not data:
+        return {"error": "The file is empty"}
+    if len(data) > MAX_UPLOAD_BYTES:
+        return {"error": f"The file is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB"}
+    looks, default_ext = _UPLOAD_TYPES[mime]
+    if not looks(data):
+        return {"error": f"The file isn't a {mime.split('/')[-1].upper()}"}
+    if _BY_EXTENSION.get(ext) != mime:
+        name = f"{name.rsplit('.', 1)[0] if ext else name}{default_ext}"
+    out = scanova_upload("media/", k, name, data, mime)
+    if not isinstance(out, dict) or "error" in out:
+        return out
+    return {k2: out.get(k2) for k2 in ("id", "file", "file_name", "mime_type", "file_type", "size") if k2 in out}
+
+
 PAGE_TOOLS: list[MoreTool] = [
     MoreTool(
         "list_page_blocks", "List page blocks",
@@ -819,5 +868,20 @@ PAGE_TOOLS: list[MoreTool] = [
         _object({"page_url": {"type": ["string", "null"]}}), publish_page,
     ),
 ]
+
+PAGE_TOOLS.append(
+    MoreTool(
+        "upload_media", "Upload to the media library",
+        "Add an image (PNG, JPEG, GIF, WebP) or a PDF to the account's media library, from its bytes (base64, up to 10 MB) — e.g. the pictures in a document a landing page is made from. Returns the file's URL to use in a page's image blocks.",
+        "Media", "media/",
+        _input({
+            "file_name": {"type": "string", "maxLength": 200, "description": "The file's name, e.g. hero.jpg"},
+            "content_base64": {"type": "string", "description": "The file's bytes, base64"},
+            "mime_type": {"type": "string", "enum": list(_UPLOAD_TYPES), "description": "Its type (default: from the name)"},
+        }, ("file_name", "content_base64")),
+        _object({"id": {"type": "integer"}, "file": {"type": "string"}, "file_name": {"type": "string"}, "mime_type": {"type": "string"}, "file_type": {"type": "string"}, "size": {"type": "integer"}}),
+        upload_media,
+    )
+)
 
 PAGE_TOOL_NAMES = frozenset(t.name for t in PAGE_TOOLS)
