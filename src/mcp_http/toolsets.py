@@ -55,6 +55,7 @@ TOOLSETS: dict[str, tuple[str, str, frozenset[str]]] = {
         "list_page_templates", "list_media", "upload_media",
         "list_page_blocks", "get_page_block", "list_page_themes", "get_page_theme", "get_page_template",
         "get_page", "create_page", "edit_page", "get_page_preview", "publish_page",
+        "get_ai_page_quota", "get_ai_page", "save_ai_page",
     })),
 }
 

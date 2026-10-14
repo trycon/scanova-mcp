@@ -563,4 +563,9 @@ from mcp_http.page_tools import PAGE_TOOLS  # noqa: E402
 
 MORE_TOOLS += PAGE_TOOLS
 
+# AI Studio pages (whole-page HTML, saved as AI Studio versions) live in ai_page_tools.py.
+from mcp_http.ai_page_tools import AI_PAGE_TOOLS  # noqa: E402
+
+MORE_TOOLS += AI_PAGE_TOOLS
+
 MORE_TOOLS_BY_NAME: dict[str, MoreTool] = {t.name: t for t in MORE_TOOLS}
