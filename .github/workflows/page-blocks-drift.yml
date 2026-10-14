@@ -1,0 +1,123 @@
+name: Page blocks drift
+
+# src/page_blocks/ is a copy of Scanova's page-block rules: JSON Schemas from
+# qcg-backend and block definitions from qcg-frontend-next. Once a day this
+# re-runs scripts/sync_page_blocks.py against those repos and, when the copy
+# has drifted, opens (or updates) a PR with the refresh. Stopgap until the
+# backend schemas are the single source.
+#
+# Secrets:
+#   SCANOVA_REPOS_READ_TOKEN  required. Fine-grained token, read-only
+#                             Contents on trycon/qcg-backend and
+#                             trycon/qcg-frontend-next.
+#   PAGE_BLOCKS_PR_TOKEN      optional. Token with Contents + Pull requests
+#                             write on trycon/qcg-mcp. PRs opened with the
+#                             default GITHUB_TOKEN don't trigger CI or the PR
+#                             title check; with this set, they do.
+
+on:
+  schedule:
+    - cron: "30 2 * * *" # 08:00 IST
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch of qcg-backend and qcg-frontend-next to sync from"
+        type: choice
+        options: [master, qa]
+        default: master
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: page-blocks-drift-${{ inputs.branch || 'master' }}
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_BRANCH: ${{ inputs.branch || 'master' }}
+    steps:
+      - name: Check the read token is set
+        env:
+          TOKEN: ${{ secrets.SCANOVA_REPOS_READ_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Secret SCANOVA_REPOS_READ_TOKEN is missing (read-only token for trycon/qcg-backend + trycon/qcg-frontend-next)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+
+      - name: Check out qcg-backend (${{ env.SOURCE_BRANCH }})
+        uses: actions/checkout@v6
+        with:
+          repository: trycon/qcg-backend
+          ref: ${{ env.SOURCE_BRANCH }}
+          token: ${{ secrets.SCANOVA_REPOS_READ_TOKEN }}
+          persist-credentials: false
+          path: .drift/qcg-backend
+          sparse-checkout: |
+            src/qr_manager/json_schema
+            src/theme_manager/json_schema
+
+      - name: Check out qcg-frontend-next (${{ env.SOURCE_BRANCH }})
+        uses: actions/checkout@v6
+        with:
+          repository: trycon/qcg-frontend-next
+          ref: ${{ env.SOURCE_BRANCH }}
+          token: ${{ secrets.SCANOVA_REPOS_READ_TOKEN }}
+          persist-credentials: false
+          path: .drift/qcg-frontend-next
+          sparse-checkout: packages/blocks
+
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Sync page blocks
+        run: |
+          npm install --prefix scripts --no-save --no-audit --no-fund esbuild@0.25.12
+          uv run --no-project python scripts/sync_page_blocks.py .drift/qcg-backend .drift/qcg-frontend-next
+
+      - name: Look for drift
+        id: drift
+        run: |
+          if [ -z "$(git status --porcelain -- src/page_blocks)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No drift: src/page_blocks matches qcg-backend and qcg-frontend-next \`$SOURCE_BRANCH\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "Refreshes \`src/page_blocks/\` with \`scripts/sync_page_blocks.py\` from \`$SOURCE_BRANCH\`:"
+            echo "qcg-backend \`$(git -C .drift/qcg-backend rev-parse --short HEAD)\`, qcg-frontend-next \`$(git -C .drift/qcg-frontend-next rev-parse --short HEAD)\`."
+            echo
+            uv run --no-project python scripts/page_blocks_diff.py
+            echo
+            echo "Opened by the [page blocks drift](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) workflow. Tests passed on this refresh before the PR was opened."
+          } > "$RUNNER_TEMP/pr-body.md"
+          cat "$RUNNER_TEMP/pr-body.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run tests on the refreshed copy
+        if: steps.drift.outputs.changed == 'true'
+        run: |
+          uv sync --frozen
+          uv run pytest -q
+
+      - name: Open or update the PR
+        if: steps.drift.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.PAGE_BLOCKS_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          branch: chore/page-blocks-sync-${{ env.SOURCE_BRANCH }}
+          base: main
+          add-paths: src/page_blocks
+          commit-message: "chore: sync page blocks from backend/frontend (${{ env.SOURCE_BRANCH }})"
+          title: "chore: sync page blocks from backend/frontend${{ env.SOURCE_BRANCH != 'master' && format(' ({0})', env.SOURCE_BRANCH) || '' }}"
+          body-path: ${{ runner.temp }}/pr-body.md
+          labels: chore
+          delete-branch: true
