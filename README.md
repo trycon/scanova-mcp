@@ -250,7 +250,7 @@ Add the following configuration to your IDE's MCP settings:
 | `edit_page` | Write | Change the draft: add, change, remove or move blocks; theme; theme values; a template's look or layout; name; search details |
 | `publish_page` | Write (destructive) | Make the draft live for everyone scanning the code |
 
-Pages are written in the page builder's block format, so they open at app.scanova.io and can be edited there. Blocks are checked against Scanova's own schemas before saving; refresh them with `python scripts/sync_page_blocks.py <qcg-backend> <qcg-frontend-next>` when blocks change.
+Pages are written in the page builder's block format, so they open at app.scanova.io and can be edited there. Blocks are checked against Scanova's own rules and schemas before saving: qcg-backend's page block schema bundle, read live from the environment's API (`<API_BASE_URL>/qr/page-blocks/schema/`, re-checked every `PAGE_BLOCKS_TTL_S` seconds, default 600; `PAGE_BLOCKS_BUNDLE_URL` overrides the URL). Until a fetch succeeds the server uses its bundled copy, `src/page_blocks/bundle.json`, which `python scripts/sync_page_blocks.py` refreshes (the daily drift workflow runs it).
 
 ## Usage
 

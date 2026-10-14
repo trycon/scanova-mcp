@@ -1,71 +1,89 @@
-"""Refresh src/page_blocks/ from Scanova's own sources.
+"""Refresh src/page_blocks/bundle.json from qcg-backend's page block schema bundle.
 
-The page tools build landing pages in the page builder's block format. The
-format is owned by two repos, so this copies it here rather than restating it:
+The page tools read the bundle live from the API of the environment the
+server talks to (src/page_blocks/__init__.py); bundle.json is the copy they
+fall back on until a fetch succeeds. This keeps that copy current. It is
+written only when the bundle's content (its `hash`) changed, so a refresh
+that finds nothing new leaves the file untouched.
 
-- qcg-backend  src/qr_manager/json_schema/{v2,categories/components}: the JSON
-  Schemas a page's blocks must pass to publish (copied as-is to schemas/).
-- qcg-frontend-next  packages/blocks/src/blocks/landing/*/definition.ts: each
-  block's label, limit, categories, fields and defaults (dumped to blocks.json
-  by dump_block_definitions.mjs, which needs esbuild in scripts/node_modules:
-  `npm i --prefix scripts --no-save esbuild`).
+Usage:
+    python scripts/sync_page_blocks.py                     from the production API
+    python scripts/sync_page_blocks.py --from <url|file>   from that URL or file
+    python scripts/sync_page_blocks.py <qcg-backend> [<qcg-frontend-next>]
+        built from a qcg-backend checkout (`python -m qr_manager.page_block_bundle`)
+        when it has the bundle module and its schemas, else from the production
+        API. The frontend checkout isn't needed any more; it's accepted (and
+        ignored) so existing callers such as the drift workflow keep working.
 
-Usage: python scripts/sync_page_blocks.py <qcg-backend checkout> <qcg-frontend-next checkout>
-
-Runs daily in CI (.github/workflows/page-blocks-drift.yml), which opens a PR
-when the copies here have drifted. Needs Python 3.13 (stdlib only) and Node.
+If no source answers, the copy is left as it is (exit 0, with a warning).
+Standard library only: the drift workflow runs it with `uv run --no-project`.
 """
 
 import json
-import shutil
+import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-OUT = HERE.parent / "src" / "page_blocks"
-
-# Blocks an assistant shouldn't place on an ordinary page: they belong to a
-# special page type (intro/document/image pages, cover/main pages), only make
-# sense on a GS1 code, or run the customer's own JavaScript.
-LEFT_OUT = {
-    "auto_redirect", "document_viewer", "image_gallery", "cover_page", "main_page", "intro_page",
-    "gs1_info", "custom_script",
-}
+OUT = Path(__file__).resolve().parent.parent / "src" / "page_blocks" / "bundle.json"
+DEFAULT_URL = os.getenv("PAGE_BLOCKS_BUNDLE_URL") or "https://api.scanova.io/qr/page-blocks/schema/"
+NEEDED = ("qr_manager/page_block_bundle.py", "qr_manager/json_schema", "forms/json_schema", "theme_manager/json_schema")
 
 
-def main(backend: Path, frontend: Path) -> None:
-    src = backend / "src" / "qr_manager" / "json_schema"
-    schemas = OUT / "schemas"
-    if schemas.exists():
-        shutil.rmtree(schemas)
-    shutil.copytree(src / "v2", schemas / "v2")
-    shutil.copytree(src / "categories" / "components", schemas / "categories" / "components")
-    shutil.copytree(backend / "src" / "theme_manager" / "json_schema", schemas / "theme")
+def is_bundle(value) -> bool:
+    return isinstance(value, dict) and value.get("format") == 1 and isinstance(value.get("blocks"), dict) \
+        and isinstance(value.get("files"), dict) and isinstance(value.get("hash"), str)
 
-    dumped = json.loads(subprocess.run(
-        ["node", str(HERE / "dump_block_definitions.mjs"), str(frontend)],
-        check=True, capture_output=True, text=True,
-    ).stdout)
-    allowed = json.loads((src / "v2" / "page-types" / "component-page.json").read_text())
-    allowed = allowed["items"]["allOf"][1]["properties"]["type"]["enum"]
-    blocks = {}
-    for block_type in allowed:
-        d = dumped.get(block_type)
-        if block_type in LEFT_OUT or not d or "error" in d:
-            continue
-        blocks[block_type] = {
-            "label": d.get("label"),
-            "description": d.get("description"),
-            "limit": d.get("limit"),
-            "removable": d.get("canDelete") is not False,
-            "categories": d.get("allowedInCategories"),
-            "fields": d.get("fields") or [],
-            "defaults": d.get("defaults") or {},
-        }
-    (OUT / "blocks.json").write_text(json.dumps(blocks, indent=1, ensure_ascii=False) + "\n")
-    print(f"{len(blocks)} blocks, schemas from {src}")
+
+def from_backend(checkout: Path):
+    src = checkout / "src"
+    if not all((src / p).exists() for p in NEEDED):
+        return None
+    run = subprocess.run([sys.executable, "-m", "qr_manager.page_block_bundle"], cwd=src, capture_output=True, text=True)
+    if run.returncode:
+        print(f"::warning::building the bundle in {checkout} failed: {run.stderr.strip()[-300:]}")
+        return None
+    return json.loads(run.stdout)
+
+
+def load(source: str):
+    if source.startswith(("http://", "https://")):
+        request = urllib.request.Request(source, headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as resp:
+                return json.loads(resp.read())
+        except (urllib.error.URLError, ValueError) as e:
+            print(f"::warning::{source}: {e}")
+            return None
+    return json.loads(Path(source).read_text())
+
+
+def write(bundle: dict) -> bool:
+    """Write the bundle; False when the copy already has this content."""
+    if OUT.exists() and json.loads(OUT.read_text()).get("hash") == bundle["hash"]:
+        return False
+    OUT.write_text(json.dumps(bundle, indent=1, ensure_ascii=False) + "\n")
+    return True
+
+
+def main(argv: list[str]) -> int:
+    if argv[:1] == ["--from"] and len(argv) > 1:
+        bundle = load(argv[1])
+    else:
+        bundle = from_backend(Path(argv[0])) if argv else None
+        bundle = bundle or load(DEFAULT_URL)
+    if bundle is None:
+        print("::warning::no page block bundle to sync from; src/page_blocks/bundle.json left as it is")
+        return 0
+    if not is_bundle(bundle):
+        print("::error::that isn't a format-1 page block schema bundle")
+        return 1
+    changed = write(bundle)
+    print(f"{len(bundle['blocks'])} blocks, hash {bundle['hash'][:12]}: {'updated' if changed else 'no change'}")
+    return 0
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]), Path(sys.argv[2]))
+    sys.exit(main(sys.argv[1:]))

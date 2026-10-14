@@ -1,6 +1,7 @@
-"""scripts/page_blocks_diff.py: the drift workflow's summary of changed blocks."""
+"""scripts/page_blocks_diff.py: the drift workflow's summary of a bundle refresh."""
 
 import importlib.util
+import json
 from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location(
@@ -8,11 +9,11 @@ _spec = importlib.util.spec_from_file_location(
 )
 page_blocks_diff = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(page_blocks_diff)
-summarize = page_blocks_diff.summarize
+summarize, changed_files = page_blocks_diff.summarize, page_blocks_diff.changed_files
 
 
 def _block(**kw):
-    return {"label": "Map", "limit": None, "fields": [{"id": "zoom", "kind": "number"}], **kw}
+    return {"label": "Map", "limit": 20, "removable": True, "default": {"zoom": 14}, **kw}
 
 
 def test_no_change_is_empty():
@@ -26,21 +27,17 @@ def test_added_and_removed_blocks():
     ]
 
 
-def test_changed_keys_and_fields():
-    old = _block()
-    new = _block(label="Location", fields=[{"id": "zoom", "kind": "slider"}, {"id": "pin", "kind": "text"}])
-    assert summarize({"map": old}, {"map": new}) == [
-        "- `map`: label, field `pin` added, field `zoom` changed"
+def test_changed_rules_are_named():
+    assert summarize({"map": _block()}, {"map": _block(label="Location", limit=5)}) == ["- `map`: label, limit"]
+
+
+def test_changed_schema_files():
+    assert changed_files({"a.json": {}, "b.json": {"x": 1}}, {"b.json": {"x": 2}, "c.json": {}}) == [
+        "- A `c.json`", "- D `a.json`", "- M `b.json`",
     ]
 
 
-def test_field_order_only():
-    fields = [{"id": "a"}, {"id": "b"}]
-    assert summarize({"x": {"fields": fields}}, {"x": {"fields": fields[::-1]}}) == ["- `x`: field order"]
-
-
-def test_committed_blocks_json_is_readable():
-    import json
-
-    blocks = json.loads((Path(__file__).resolve().parent.parent / "src/page_blocks/blocks.json").read_text())
-    assert summarize(blocks, blocks) == []
+def test_committed_bundle_is_readable():
+    bundle = json.loads((Path(__file__).resolve().parent.parent / "src/page_blocks/bundle.json").read_text())
+    assert summarize(bundle["blocks"], bundle["blocks"]) == []
+    assert changed_files(bundle["files"], bundle["files"]) == []
