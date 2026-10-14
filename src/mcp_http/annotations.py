@@ -33,6 +33,8 @@ READ_ONLY = frozenset({
     # page_tools.py — get_page_preview only mints a 1-hour view link.
     "list_page_blocks", "get_page_block", "list_page_themes", "get_page_theme", "get_page_template",
     "get_page", "get_page_preview",
+    # ai_page_tools.py
+    "get_ai_page_quota", "get_ai_page",
 })
 
 ADDITIVE = frozenset({
@@ -48,6 +50,9 @@ ADDITIVE = frozenset({
     "create_page", "edit_page",
     # Adds a file to the account's media library; nothing uses it until a page does.
     "upload_media",
+    # ai_page_tools.py — a new AI Studio version and the QR code's draft; what scanners see changes only when the
+    # customer publishes in AI Studio.
+    "save_ai_page",
 })
 
 DESTRUCTIVE = frozenset({

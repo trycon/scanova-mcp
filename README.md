@@ -75,7 +75,7 @@ Add the following configuration to your IDE's MCP settings:
 
 ## Tools
 
-82 tools. **Type** is the tool's MCP annotation: read-only, write (only adds), or destructive (can change or switch off something live — hosts should confirm first).
+96 tools. **Type** is the tool's MCP annotation: read-only, write (only adds), or destructive (can change or switch off something live — hosts should confirm first).
 
 ### Documentation
 
@@ -251,6 +251,16 @@ Add the following configuration to your IDE's MCP settings:
 | `publish_page` | Write (destructive) | Make the draft live for everyone scanning the code |
 
 Pages are written in the page builder's block format, so they open at app.scanova.io and can be edited there. Blocks are checked against Scanova's own rules and schemas before saving: qcg-backend's page block schema bundle, read live from the environment's API (`<API_BASE_URL>/qr/page-blocks/schema/`, re-checked every `PAGE_BLOCKS_TTL_S` seconds, default 600; `PAGE_BLOCKS_BUNDLE_URL` overrides the URL). Until a fetch succeeds the server uses its bundled copy, `src/page_blocks/bundle.json`, which `python scripts/sync_page_blocks.py` refreshes (the daily drift workflow runs it).
+
+### AI pages
+
+| Tool | Type | Description |
+|---|---|---|
+| `get_ai_page_quota` | Read-only | AI page credits left this month (the plan's `AI_QR_TOKENS`, top-ups, used) |
+| `get_ai_page` | Read-only | An AI Studio page's current HTML (its draft if it has one) and links |
+| `save_ai_page` | Write | A finished page as a new AI Studio version (Tailwind compiled by Scanova, one credit used) and as the code's draft — a new AI QR code or the given one's |
+
+AI pages are AI Studio's whole-page HTML pages (category `ai`, `info` = `{"full_html_page": …}`), made by Scova's page pipeline in Trycon AI. `save_ai_page` calls `ai-assistance/qr-sessions/external/` (qcg-backend PR "save externally generated AI pages", which also serves `ai-assistance/token-usage/` on this API host), then `POST qr/` or `PATCH qr/<qrid>/` with the session id, as AI Studio does. Nothing is published: the customer publishes from AI Studio.
 
 ## Usage
 
