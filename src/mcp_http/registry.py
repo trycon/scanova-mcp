@@ -473,7 +473,10 @@ def list_mcp_tools():
         _tool(
             "get_qr_analytics",
             "Get QR code analytics",
-            "Retrieve QR code performance metrics broken down by device, geography, date, etc.",
+            (
+                "Retrieve the scan metrics of chosen QR codes (by qrid, tag or folder) broken down by device, "
+                "geography, date, etc. To rank the whole account's QR codes by scans, use top_qr_codes_by_scans."
+            ),
             READ_ONLY_TOOL_ANNOTATIONS_JSON,
             GET_QR_ANALYTICS_SCHEMA,
         ),

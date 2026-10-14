@@ -51,6 +51,8 @@ _NEW_INPUTS = {"set_qr_design": {"accept_risk"}}
 # took the numeric id, while every other tool's form_id is the string one).
 # download_qr_code offers the formats the API always accepted (svg, eps), not just png/jpg/pdf.
 _REWRITTEN = {"create_form", "attach_form_to_qr", "download_qr_code"}
+# Re-described only: get_qr_analytics points at top_qr_codes_by_scans for ranking the whole account.
+_REDESCRIBED = {"get_qr_analytics"}
 
 
 def test_tools_list_matches_the_pre_upgrade_server_on_both_eras():
@@ -69,6 +71,8 @@ def test_tools_list_matches_the_pre_upgrade_server_on_both_eras():
                 props = {k: v for k, v in after["inputSchema"]["properties"].items() if k not in added}
                 after = {**after, "inputSchema": {**after["inputSchema"], "properties": props}}
                 assert set(after["inputSchema"].get("required", [])) == set(before["inputSchema"].get("required", [])), before["name"]
+            if before["name"] in _REDESCRIBED:
+                after, before = {**after, "description": None}, {**before, "description": None}
             assert after == before, (era, before["name"])
 
 

@@ -3,8 +3,12 @@ name: Page blocks drift
 # src/page_blocks/ is a copy of Scanova's page-block rules: JSON Schemas from
 # qcg-backend and block definitions from qcg-frontend-next. Once a day this
 # re-runs scripts/sync_page_blocks.py against those repos and, when the copy
-# has drifted, opens (or updates) a PR with the refresh. Stopgap until the
-# backend schemas are the single source.
+# has drifted, opens (or updates) a PR with the refresh. It complements the
+# live schema bundle: the server reads qcg-backend's bundle from
+# <API_BASE_URL>/qr/page-blocks/schema/ at run time (README → Landing pages)
+# and only falls back to this copy until a fetch succeeds, so the copy just
+# needs to stay close. Once that endpoint is live in every environment this
+# can run weekly instead of daily.
 #
 # Secrets:
 #   SCANOVA_REPOS_READ_TOKEN  required. Fine-grained token, read-only

@@ -248,6 +248,14 @@ def _unwrap_jsonrpc(raw: dict, tool_name: str) -> dict | None:
     return result
 
 
+def _is_drf_field_errors(raw: dict) -> bool:
+    """DRF's validation-error body: each field maps to a non-empty list of message strings."""
+    return bool(raw) and all(
+        isinstance(v, list) and v and all(isinstance(m, str) for m in v)
+        for v in raw.values()
+    )
+
+
 # Tools whose result is built in this server (not a Scanova API response), with list-valued fields.
 _REPORT_TOOLS = {"preview_qr_design", "get_qr_design_options", *PAGE_TOOL_NAMES}
 
@@ -336,6 +344,12 @@ def normalize(raw, tool_name: str) -> dict:
     # no "count"/"results" — treated as 422. Not for tools computed here
     # (_REPORT_TOOLS): they legitimately return lists (checks, patterns), and a
     # preview read as a failure meant clients never showed it.
+    #
+    # Only DRF's own shape counts: every value a non-empty list of messages
+    # ({"name": ["This field is required."]}). "Any list value" used to be
+    # enough, so every successful analytics breakdown ({"qr": [["Menu", 12]],
+    # "qr_meta": {...}}) and the scan overview ({"last_months": [...]}) came
+    # back as a 422 tool error, and assistants retried them until they gave up.
     is_validation_error = (
         not is_error
         and tool_name not in _REPORT_TOOLS
@@ -343,8 +357,8 @@ def normalize(raw, tool_name: str) -> dict:
         and "results" not in raw
         and success_field is None
         and ok_field is None
-        and any(isinstance(v, list) for v in raw.values())
         and not raw.get("id")  # avoid false-positive on QR code objects
+        and _is_drf_field_errors(raw)
     )
 
     if is_error:

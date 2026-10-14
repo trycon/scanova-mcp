@@ -440,7 +440,8 @@ CREATE_FORM_OUTPUT = {
         "form_url": {"type": "string"},
         "is_active": {"type": "boolean"},
         "linked_qrs": {"type": "array"},
-        "data": {"type": "object"},
+        # The form's content as the API keeps it; not pinned to one JSON type.
+        "data": {},
         **_ERROR,
     },
 }
