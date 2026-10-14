@@ -1,9 +1,9 @@
-"""Summarise how src/page_blocks/ changed after sync_page_blocks.py ran.
+"""Summarise how src/page_blocks/bundle.json changed after sync_page_blocks.py ran.
 
 Prints Markdown: which block types were added, removed or changed (and which
-fields, by id), then which schema files changed. Compares the working tree with
-HEAD. Used by .github/workflows/page-blocks-drift.yml for the job summary and
-the PR body.
+of their rules), then which schema files changed. Compares the working tree
+with HEAD. Used by .github/workflows/page-blocks-drift.yml for the job summary
+and the PR body.
 
 Usage: python scripts/page_blocks_diff.py
 """
@@ -13,12 +13,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BLOCKS = "src/page_blocks/blocks.json"
-SCHEMAS = "src/page_blocks/schemas"
-
-
-def _fields(block: dict) -> dict:
-    return {f.get("id") or f.get("path"): f for f in block.get("fields") or []}
+BUNDLE = "src/page_blocks/bundle.json"
 
 
 def summarize(old: dict, new: dict) -> list[str]:
@@ -30,31 +25,30 @@ def summarize(old: dict, new: dict) -> list[str]:
         lines.append(f"- `{t}`: no longer offered")
     for t in sorted(old.keys() & new.keys()):
         o, n = old[t], new[t]
-        if o == n:
-            continue
-        parts = [k for k in sorted(o.keys() | n.keys()) if k != "fields" and o.get(k) != n.get(k)]
-        of, nf = _fields(o), _fields(n)
-        parts += [f"field `{f}` added" for f in sorted(nf.keys() - of.keys(), key=str)]
-        parts += [f"field `{f}` removed" for f in sorted(of.keys() - nf.keys(), key=str)]
-        parts += [f"field `{f}` changed" for f in sorted(of.keys() & nf.keys(), key=str) if of[f] != nf[f]]
-        if not parts and o.get("fields") != n.get("fields"):
-            parts.append("field order")
-        lines.append(f"- `{t}`: " + ", ".join(parts))
+        if o != n:
+            lines.append(f"- `{t}`: " + ", ".join(k for k in sorted(o.keys() | n.keys()) if o.get(k) != n.get(k)))
     return lines
 
 
-def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout
+def changed_files(old: dict, new: dict) -> list[str]:
+    out = [f"- A `{k}`" for k in sorted(new.keys() - old.keys())]
+    out += [f"- D `{k}`" for k in sorted(old.keys() - new.keys())]
+    out += [f"- M `{k}`" for k in sorted(old.keys() & new.keys()) if old[k] != new[k]]
+    return out
+
+
+def _head() -> dict:
+    run = subprocess.run(["git", "show", f"HEAD:{BUNDLE}"], cwd=ROOT, capture_output=True, text=True)
+    return json.loads(run.stdout) if run.returncode == 0 else {}
 
 
 def main() -> None:
-    old = json.loads(_git("show", f"HEAD:{BLOCKS}"))
-    new = json.loads((ROOT / BLOCKS).read_text())
-    blocks = summarize(old, new)
-    # Porcelain status also lists new (untracked) schema files: "XY path".
-    schemas = [s for s in _git("status", "--porcelain", "-uall", "--", SCHEMAS).split("\n") if s]
-    out = ["### Blocks", *(blocks or ["- no change"]), "", "### Schemas"]
-    out += [f"- {s[:2].strip()} `{s[3:].removeprefix(SCHEMAS + '/')}`" for s in schemas] or ["- no change"]
+    old, new = _head(), json.loads((ROOT / BUNDLE).read_text())
+    blocks = summarize(old.get("blocks") or {}, new.get("blocks") or {})
+    files = changed_files(old.get("files") or {}, new.get("files") or {})
+    source = new.get("source") or {}
+    out = [f"Bundle `{str(new.get('hash'))[:12]}` (from {source.get('environment') or '?'}, qcg-backend `{str(source.get('commit') or '?')[:7]}`)", ""]
+    out += ["### Blocks", *(blocks or ["- no change"]), "", "### Schemas", *(files or ["- no change"])]
     print("\n".join(out))
 
 

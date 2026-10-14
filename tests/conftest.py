@@ -16,6 +16,8 @@ from starlette.testclient import TestClient
 os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "100000")
 os.environ.setdefault("RATE_LIMIT_BURST", "100000")
 os.environ.setdefault("ANON_RATE_LIMIT_PER_MINUTE", "100000")
+# Page tools read the page block bundle bundled with the server, never the API.
+os.environ.setdefault("PAGE_BLOCKS_BUNDLE_URL", "off")
 
 MODERN = "2026-07-28"
 LEGACY = "2025-06-18"

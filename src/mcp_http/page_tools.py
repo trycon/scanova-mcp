@@ -7,11 +7,12 @@ at app.scanova.io writes, so a page made here opens there and can be edited
 block by block. Every change is saved as a draft (``is_draft``): the live page
 only changes on ``publish_page``.
 
-The blocks' rules come from Scanova's own sources, copied to page_blocks/ by
-scripts/sync_page_blocks.py: the backend's JSON Schemas (what a page must
-pass to publish) and the builder's block definitions (labels, limits, which
-page categories a block belongs to, defaults). Changes are checked against
-them before anything is saved.
+The blocks' rules come from qcg-backend's page block schema bundle (see
+page_blocks/): its JSON Schemas (what a page must pass to publish) and each
+block's builder rules (label, how many a page holds, which page categories it
+belongs to, whether it can be removed, defaults). The bundle is read from the
+API of the environment this server talks to, so the rules follow it. Changes
+are checked against them before anything is saved.
 """
 
 import base64
@@ -21,17 +22,15 @@ import json
 import re
 import time
 from functools import lru_cache
-from pathlib import Path
 
 import jsonschema
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT7
 
+import page_blocks
 from mcp_http.more_tools import _SEGMENT, MoreTool, _input, _missing, _object
 from scanova_api import NO_KEY, scanova, scanova_upload
 
-_DIR = Path(__file__).resolve().parent.parent / "page_blocks"
-_SCHEMAS = _DIR / "schemas"
 BUILDER_URL = "https://app.scanova.io/qr/{qrid}/landing"
 MAX_CHANGES = 40
 # What the builder shows for an unnamed page.
@@ -59,57 +58,80 @@ def _tool(*required: str, ids: tuple = ()):
     return wrap
 
 
-@lru_cache(maxsize=1)
+# Blocks the bundle offers on an ordinary page that an assistant still
+# shouldn't place: one only makes sense on a GS1 code, the other runs the
+# customer's own JavaScript. (Blocks of special page types, and ones the
+# builder's picker hides, are left out by their rules.)
+LEFT_OUT = {"gs1_info", "custom_script"}
+# The page type these tools build.
+PAGE_TYPE = "component"
+
+
 def blocks() -> dict:
-    return json.loads((_DIR / "blocks.json").read_text())
+    """The blocks a page made here can have: {type: {label, description, limit, removable, categories, defaults}}."""
+    return _catalogue(page_blocks.bundle()["hash"])
+
+
+@lru_cache(maxsize=4)
+def _catalogue(_hash: str) -> dict:
+    b = page_blocks.bundle()
+    on_page = set((b["pageTypes"].get(PAGE_TYPE) or {}).get("blocks") or ())
+    out = {}
+    for block_type, info in sorted(b["blocks"].items()):
+        if (
+            info.get("builder") != "landing"
+            or block_type not in on_page
+            or block_type in LEFT_OUT
+            or info.get("hiddenFromPicker")
+            or (info.get("pageTypes") and PAGE_TYPE not in info["pageTypes"])
+        ):
+            continue
+        out[block_type] = {
+            "label": info.get("label"),
+            "description": info.get("description"),
+            "limit": info.get("limit"),
+            "removable": info.get("removable", True) and PAGE_TYPE not in (info.get("notRemovableOnPageTypes") or ()),
+            "categories": info.get("categories"),
+            "defaults": info.get("default") or {},
+        }
+    return out
 
 
 # ── validation against the backend's schemas ──────────────────────────────── #
 
-def _fix_fragments(node):
-    """A few backend schema files write `x.json#properties/a` for `#/properties/a`; the backend repairs it the same way."""
-    if isinstance(node, dict):
-        ref = node.get("$ref")
-        if isinstance(ref, str) and "#" in ref:
-            file_part, fragment = ref.split("#", 1)
-            if fragment and not fragment.startswith("/"):
-                node = {**node, "$ref": f"{file_part}#/{fragment}"}
-        return {k: _fix_fragments(v) for k, v in node.items()}
-    if isinstance(node, list):
-        return [_fix_fragments(v) for v in node]
-    return node
+# The bundle's files are keyed by path, with every $ref already relative to
+# the file it's in, so they resolve under any base URI.
+_BASE = "https://page-blocks.invalid/"
 
 
-def _load(path: Path) -> Resource:
-    return Resource.from_contents(_fix_fragments(json.loads(path.read_text())), default_specification=DRAFT7)
+@lru_cache(maxsize=4)
+def _registry(_hash: str) -> Registry:
+    return Registry().with_resources(
+        (_BASE + key, Resource.from_contents(schema, default_specification=DRAFT7))
+        for key, schema in page_blocks.bundle()["files"].items()
+    )
 
 
-def _file_registry(*search: Path) -> Registry:
-    def retrieve(uri: str):
-        path = Path(uri[len("file://"):] if uri.startswith("file://") else uri)
-        if path.is_absolute() and path.exists():
-            return _load(path)
-        for base in search:
-            if (base / path).exists():
-                return _load(base / path)
-        raise FileNotFoundError(uri)
-    return Registry(retrieve=retrieve)
+def _validator(key: str):
+    b = page_blocks.bundle()
+    schema = {**b["files"][key], "$id": _BASE + key}
+    cls = jsonschema.validators.validator_for(schema, default=jsonschema.Draft7Validator)
+    return cls(schema, registry=_registry(b["hash"]), format_checker=jsonschema.FormatChecker())
 
 
-@lru_cache(maxsize=1)
 def _blocks_validator():
-    path = _SCHEMAS / "v2" / "page-types" / "component-page.json"
-    schema = {**_fix_fragments(json.loads(path.read_text())), "$id": path.as_uri()}
-    cls = jsonschema.validators.validator_for(schema, default=jsonschema.Draft7Validator)
-    return cls(schema, registry=_file_registry(path.parent), format_checker=jsonschema.FormatChecker())
+    return _cached_validator(page_blocks.bundle()["hash"], "page")
 
 
-@lru_cache(maxsize=1)
 def _theme_validator():
-    base = _SCHEMAS / "theme"
-    schema = json.loads((base / "theme_config_v2.json").read_text())
-    cls = jsonschema.validators.validator_for(schema, default=jsonschema.Draft7Validator)
-    return cls(schema, registry=_file_registry(base, _SCHEMAS / "categories" / "components"), format_checker=jsonschema.FormatChecker())
+    return _cached_validator(page_blocks.bundle()["hash"], "theme")
+
+
+@lru_cache(maxsize=8)
+def _cached_validator(_hash: str, which: str):
+    b = page_blocks.bundle()
+    key = b["pageTypes"][PAGE_TYPE]["schema"] if which == "page" else b["theme"]["schema"]
+    return _validator(key)
 
 
 def _where(path) -> str:
@@ -616,28 +638,28 @@ def _block_info(block_type: str):
     b = blocks().get(block_type)
     if not b:
         return None
-    schema_path = _SCHEMAS / "v2" / "components" / f"{block_type}.json"
-    if not schema_path.exists():
-        schema_path = _SCHEMAS / "categories" / "components" / f"{block_type}.json"
-    schema = json.loads(schema_path.read_text()) if schema_path.exists() else None
-    return {"type": block_type, **b, "data_schema": _compact_schema(schema, schema_path.parent)}
+    key = page_blocks.bundle()["blocks"][block_type]["schema"]
+    return {"type": block_type, **b, "data_schema": _compact_schema(key)}
 
 
 _STYLE_KEYS = {"cardStyle", "textStyle", "layout", "formatting", "tracking", "buttonStyle", "subtitleStyle"}
 
 
-def _compact_schema(schema, base: Path | None = None):
+def _compact_schema(key: str):
     """The block's data contract without the noise: its own fields (types, allowed values, limits, which are
-    required); styling objects and long comments left out — the full file is the backend's, and saves still validate
-    against it."""
+    required); styling objects and long comments left out — the full schema is the backend's, and saves still
+    validate against it."""
+    files = page_blocks.bundle()["files"]
+    schema = files.get(key)
     if not isinstance(schema, dict):
         return None
     parts = [schema, *[x for x in schema.get("allOf", []) if isinstance(x, dict)]]
     # A shared base it builds on (button → _base_button.json): its fields count too.
+    folder = key.rsplit("/", 1)[0]
     for part in list(parts):
         ref = part.get("$ref")
-        if base and isinstance(ref, str) and ref.endswith(".json") and "/" not in ref and (base / ref).exists():
-            shared = json.loads((base / ref).read_text())
+        shared = files.get(f"{folder}/{ref}") if isinstance(ref, str) and ref.endswith(".json") and "/" not in ref else None
+        if isinstance(shared, dict):
             parts += [shared, *[x for x in shared.get("allOf", []) if isinstance(x, dict)]]
     props, required = {}, []
     for part in parts:
