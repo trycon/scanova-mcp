@@ -75,7 +75,7 @@ Add the following configuration to your IDE's MCP settings:
 
 ## Tools
 
-96 tools. **Type** is the tool's MCP annotation: read-only, write (only adds), or destructive (can change or switch off something live — hosts should confirm first).
+97 tools. **Type** is the tool's MCP annotation: read-only, write (only adds), or destructive (can change or switch off something live — hosts should confirm first).
 
 ### Documentation
 
@@ -169,8 +169,9 @@ Add the following configuration to your IDE's MCP settings:
 | Tool | Type | Description |
 |---|---|---|
 | `get_account_stats` | Read-only | Retrieve account-level usage counters (total QR codes, scans, users, etc.) |
-| `get_qr_analytics` | Read-only | Retrieve QR code performance metrics broken down by device, geography, date, etc |
+| `get_qr_analytics` | Read-only | Retrieve the scan metrics of chosen QR codes (by qrid, tag or folder) broken down by device, geography, date, etc |
 | `get_analytics_overview` | Read-only | The account's scan overview: all-time totals, this month, the last months, and scans by date |
+| `top_qr_codes_by_scans` | Read-only | The account's QR codes with the most scans in a period (default: last 30 days, top 10), across every QR code in one call |
 | `list_analytics_reports` | Read-only | List the scan-analytics reports that have been generated: their scope, dates, status, and a download link once complete |
 | `create_analytics_report` | Write | Generate a scan-analytics report for some QR codes, tags or folders over a date range |
 

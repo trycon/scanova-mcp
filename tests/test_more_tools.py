@@ -69,6 +69,7 @@ CASES = [
     ("create_gs1_recall", {"gtin": "09506000134352", "batch_lot_value": "L42", "message": "Do not use"}, "POST", "qr/gs1-recalls/", {}, {"gtin": "09506000134352", "batch_lot_value": "L42", "message": "Do not use"}),
     ("update_gs1_recall", {"recall_id": 3, "is_active": False}, "PATCH", "qr/gs1-recalls/3/", {}, {"is_active": False}),
     ("get_analytics_overview", {"sections": ["all_time"]}, "GET", "analytics/overview/", {"type": "all_time"}, None),
+    ("top_qr_codes_by_scans", {"from_date": "2026-09-01", "to_date": "2026-09-30"}, "POST", "analytics/qr/", {"type": "qr", "from": "2026-09-01", "to": "2026-09-30", "all": "true", "overview": "true"}, {"q": [], "filter_by": "qrid"}),
     ("list_analytics_reports", {}, "GET", "analytics/report/", {}, None),
     ("create_analytics_report", {"scope": "qrcode", "ids": ["Qa"], "start_date": "2026-09-01", "end_date": "2026-09-26", "report_type": "both"}, "POST", "analytics/report/", {},
      {"filter_type": "qrcode", "filter_data": '["Qa"]', "start_date": "2026-09-01", "end_date": "2026-09-26", "report_type": "both", "exclude_bot_scan": False, "analytics_format": "pdf", "scan_format": "csv"}),

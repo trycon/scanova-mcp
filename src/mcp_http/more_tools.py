@@ -18,7 +18,9 @@ beyond the existing tools.
 import json
 import re
 import string
+from collections import Counter
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Callable
 
 from scanova_api import scanova
@@ -241,6 +243,65 @@ def _create_analytics_report(a: dict, k: str):
     return scanova("POST", "analytics/report/", k, body=body)
 
 
+TOP_DEFAULT_DAYS = 30
+TOP_MAX_DAYS = 730  # qcg-backend's ANALYTICS_LIMIT_DURATION
+TOP_DEFAULT_LIMIT = 10
+TOP_MAX_LIMIT = 50
+
+
+def _top_qr_codes_by_scans(a: dict, k: str, today: date | None = None):
+    """
+    The account's QR codes ranked by scans in a period, ranked and cut here.
+
+    Asking get_qr_analytics this needed every qrid in the account (list_qr_codes, 20 a page) and failed past 200 codes.
+    This is the request the dashboard's own "top performers" makes: every QR code (all=true) with no 200-code cap
+    (overview=true), type=qr only. The backend answers [name, scans] rows sorted by scans plus a name → qrid map;
+    only the top `limit` go back, so the reply stays small however big the account is.
+    """
+    if a.get("from_date") or a.get("to_date"):
+        if err := _missing(a, "from_date", "to_date"):
+            return err
+        start, end = a["from_date"], a["to_date"]
+    else:
+        days = int(TOP_DEFAULT_DAYS if a.get("days") is None else a["days"])
+        if not 1 <= days <= TOP_MAX_DAYS:
+            return {"error": f"days must be between 1 and {TOP_MAX_DAYS}"}
+        end_day = today or date.today()
+        start, end = (end_day - timedelta(days=days - 1)).isoformat(), end_day.isoformat()
+    limit = max(1, min(int(a.get("limit") or TOP_DEFAULT_LIMIT), TOP_MAX_LIMIT))
+    params = {"type": "qr", "from": start, "to": end, "all": "true", "overview": "true"}
+    if a.get("exclude_bot_scan"):
+        params["exclude_bot_scan"] = "true"
+    out = scanova("POST", "analytics/qr/", k, params=params, body={"q": [], "filter_by": "qrid"})
+    if not isinstance(out, dict) or out.get("error") is not None:
+        return out
+    if not isinstance(out.get("qr"), list):
+        # Plans without advanced analytics get the total only (the backend turns every type into `count`).
+        return {
+            "from_date": start, "to_date": end, "total_scans": out.get("count"), "top": [],
+            "note": "This plan's analytics give the account's total scans only, not scans per QR code.",
+        }
+    meta = out.get("qr_meta") if isinstance(out.get("qr_meta"), dict) else {}
+    rows = [r for r in out["qr"] if isinstance(r, list) and len(r) >= 2 and isinstance(r[1], (int, float))]
+    rows.sort(key=lambda r: r[1], reverse=True)
+    # The map is by name: when two QR codes share one, it can't say which qrid a row is, so neither gets one.
+    shared = {n for n, c in Counter(r[0] for r in rows).items() if c > 1}
+    top = []
+    for rank, (name, scans, *_) in enumerate((r for r in rows if r[1] > 0), start=1):
+        if rank > limit:
+            break
+        info = meta.get(name) if isinstance(meta.get(name), dict) and name not in shared else {}
+        top.append({"rank": rank, "qrid": info.get("qrid"), "name": name, "scans": int(scans), "category": info.get("category")})
+    return {
+        "from_date": start,
+        "to_date": end,
+        "total_scans": int(sum(r[1] for r in rows)),
+        "qr_codes_counted": len(rows),
+        "qr_codes_with_scans": sum(1 for r in rows if r[1] > 0),
+        "top": top,
+    }
+
+
 def _json_list(items: list) -> str:
     return json.dumps(items)
 
@@ -395,6 +456,30 @@ MORE_TOOLS: list[MoreTool] = [
         _input({"sections": {"type": "array", "items": {"type": "string", "enum": list(_OVERVIEW)}, "description": "Which sections (default: all)"}}),
         _object({"all_time": {}, "current_month": {}, "last_months": {}, "scan_dates": {}}),
         _get("analytics/overview/", lambda a: {"type": ",".join(a.get("sections") or _OVERVIEW)}),
+    ),
+    MoreTool(
+        "top_qr_codes_by_scans", "Top QR codes by scans", (
+            "The account's QR codes with the most scans in a period, most first: each one's qrid, name, scans and "
+            "category, plus the period's total. Use it for \"which of my QR codes got the most scans\" — it covers "
+            "every QR code in the account in one call. Default: the last 30 days, top 10."
+        ), "Analytics", "analytics/qr/",
+        _input({
+            "days": {"type": "integer", "minimum": 1, "maximum": TOP_MAX_DAYS, "description": f"The last N days, today included (default {TOP_DEFAULT_DAYS})"},
+            "from_date": _date("Start of the period, instead of days"),
+            "to_date": _date("End of the period, instead of days"),
+            "limit": {"type": "integer", "minimum": 1, "maximum": TOP_MAX_LIMIT, "description": f"How many to return (default {TOP_DEFAULT_LIMIT})"},
+            "exclude_bot_scan": {"type": "boolean", "description": "Leave out scans from bots"},
+        }),
+        _object({
+            "from_date": {"type": "string"}, "to_date": {"type": "string"},
+            "total_scans": {"type": ["integer", "null"]}, "qr_codes_counted": {"type": "integer"}, "qr_codes_with_scans": {"type": "integer"},
+            "top": {"type": "array", "items": {"type": "object", "properties": {
+                "rank": {"type": "integer"}, "qrid": {"type": ["string", "null"]}, "name": {"type": "string"},
+                "scans": {"type": "integer"}, "category": {"type": ["string", "null"]},
+            }}},
+            "note": {"type": "string"},
+        }),
+        _top_qr_codes_by_scans,
     ),
     MoreTool(
         "list_analytics_reports", "List analytics reports",

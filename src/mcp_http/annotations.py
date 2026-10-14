@@ -24,7 +24,7 @@ READ_ONLY = frozenset({
     # more_tools.py
     "list_form_responses", "get_form_analytics", "get_form_question_analytics", "list_form_templates", "list_form_notifications",
     "list_trashed_qr_codes", "get_qr_health", "list_gs1_recalls",
-    "get_analytics_overview", "list_analytics_reports",
+    "get_analytics_overview", "top_qr_codes_by_scans", "list_analytics_reports",
     "list_available_plans", "get_downgrade_impact", "list_payments", "list_orders", "list_quota_topups",
     "get_activity_feed", "get_activity_summary",
     "get_custom_domain", "list_bulk_operations", "get_bulk_operation_stats", "list_media",
