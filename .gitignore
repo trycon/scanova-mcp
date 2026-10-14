@@ -6,3 +6,5 @@ __pycache__
 *.pyc
 .env
 .env.*
+# esbuild for scripts/dump_block_definitions.mjs
+scripts/node_modules

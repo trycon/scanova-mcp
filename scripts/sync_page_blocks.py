@@ -7,9 +7,13 @@ format is owned by two repos, so this copies it here rather than restating it:
   Schemas a page's blocks must pass to publish (copied as-is to schemas/).
 - qcg-frontend-next  packages/blocks/src/blocks/landing/*/definition.ts: each
   block's label, limit, categories, fields and defaults (dumped to blocks.json
-  by dump_block_definitions.mjs, which needs `npm i esbuild` next to it).
+  by dump_block_definitions.mjs, which needs esbuild in scripts/node_modules:
+  `npm i --prefix scripts --no-save esbuild`).
 
 Usage: python scripts/sync_page_blocks.py <qcg-backend checkout> <qcg-frontend-next checkout>
+
+Runs daily in CI (.github/workflows/page-blocks-drift.yml), which opens a PR
+when the copies here have drifted. Needs Python 3.13 (stdlib only) and Node.
 """
 
 import json
